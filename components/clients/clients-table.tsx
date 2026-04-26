@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { MoreHorizontal, Search, User, Phone, MapPin, Wallet } from 'lucide-react'
 import { EditClientDialog } from './edit-client-dialog'
 import { DeleteClientDialog } from './delete-client-dialog'
@@ -33,10 +33,11 @@ interface Loan {
 interface Client {
   id: string
   name: string
+  full_name?: string // Por si viene con este nombre desde la DB
   phone: string | null
   address: string | null
   created_at: string
-  loans: Loan[]
+  loans?: Loan[] // Opcional para evitar errores
 }
 
 interface ClientsTableProps {
@@ -52,20 +53,32 @@ function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-export function ClientsTable({ clients }: ClientsTableProps) {
+export function ClientsTable({ clients = [] }: ClientsTableProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [deletingClient, setDeletingClient] = useState<Client | null>(null)
 
-  const filteredClients = clients.filter((client) =>
-    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.phone?.includes(searchQuery) ||
-    client.address?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Filtro con protección contra nulos
+  const filteredClients = (clients || []).filter((client) => {
+    const clientName = (client.name || client.full_name || "").toLowerCase()
+    const clientPhone = client.phone || ""
+    const clientAddress = (client.address || "").toLowerCase()
+    const search = searchQuery.toLowerCase()
 
-  const getActiveLoans = (loans: Loan[]) => loans.filter(l => l.status === 'active')
-  const getTotalDebt = (loans: Loan[]) => 
-    getActiveLoans(loans).reduce((sum, loan) => sum + Number(loan.remaining_balance), 0)
+    return clientName.includes(search) || 
+           clientPhone.includes(search) || 
+           clientAddress.includes(search)
+  })
+
+  // Funciones de préstamos con protección contra undefined
+  const getActiveLoans = (loans: Loan[] = []) => {
+    return (loans || []).filter(l => l.status === 'active')
+  }
+
+  const getTotalDebt = (loans: Loan[] = []) => {
+    const active = getActiveLoans(loans)
+    return active.reduce((sum, loan) => sum + Number(loan.remaining_balance || 0), 0)
+  }
 
   return (
     <>
@@ -85,13 +98,11 @@ export function ClientsTable({ clients }: ClientsTableProps) {
         </CardHeader>
         <CardContent>
           {filteredClients.length === 0 ? (
-            <div className="py-12 text-center">
+            <div className="py-12 text-center border rounded-lg bg-muted/10">
               <User className="mx-auto h-12 w-12 text-muted-foreground/50" />
-              <h3 className="mt-4 text-lg font-medium">No hay clientes</h3>
+              <h3 className="mt-4 text-lg font-medium">No se encontraron clientes</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                {searchQuery
-                  ? 'No se encontraron clientes con esa busqueda'
-                  : 'Agrega tu primer cliente para comenzar'}
+                {searchQuery ? 'Prueba con otro término' : 'Aún no hay clientes registrados'}
               </p>
             </div>
           ) : (
@@ -101,7 +112,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                   <TableRow>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Contacto</TableHead>
-                    <TableHead>Prestamos Activos</TableHead>
+                    <TableHead>Préstamos Activos</TableHead>
                     <TableHead>Deuda Total</TableHead>
                     <TableHead className="w-[70px]"></TableHead>
                   </TableRow>
@@ -119,9 +130,9 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                               <User className="h-5 w-5 text-primary" />
                             </div>
                             <div>
-                              <p className="font-medium">{client.name}</p>
+                              <p className="font-medium">{client.name || client.full_name}</p>
                               {client.address && (
-                                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
                                   <MapPin className="h-3 w-3" />
                                   {client.address}
                                 </p>
@@ -146,7 +157,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                               {activeLoans.length}
                             </Badge>
                           ) : (
-                            <Badge variant="outline">Sin prestamos</Badge>
+                            <Badge variant="outline" className="text-muted-foreground font-normal">0</Badge>
                           )}
                         </TableCell>
                         <TableCell>
@@ -163,21 +174,18 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon">
                                 <MoreHorizontal className="h-4 w-4" />
-                                <span className="sr-only">Abrir menu</span>
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem asChild>
-                                <Link href={`/dashboard/clients/${client.id}`}>
-                                  Ver detalles
-                                </Link>
+                                <Link href={`/dashboard/clients/${client.id}`}>Ver detalles</Link>
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setEditingClient(client)}>
                                 Editar
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => setDeletingClient(client)}
-                                className="text-destructive focus:text-destructive"
+                                className="text-destructive"
                               >
                                 Eliminar
                               </DropdownMenuItem>
