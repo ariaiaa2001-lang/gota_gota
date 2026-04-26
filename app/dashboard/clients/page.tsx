@@ -8,34 +8,32 @@ export const revalidate = 0
 export default async function ClientsPage() {
   const supabase = await createClient()
   
-  // Obtenemos el usuario actual
+  // 1. Verificamos sesión (solo para debug)
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
 
-  // CAMBIO CLAVE: 
-  // Si eres el administrador, quizás quieras ver TODOS los clientes.
-  // Por ahora, vamos a quitar el .eq('user_id', user.id) para confirmar que los datos bajan.
+  // 2. CONSULTA SIN FILTROS Y SIN RELACIONES (Para descartar errores de tabla loans)
+  // Intentamos traer TODO de la tabla clients
   const { data: clients, error } = await supabase
     .from('clients')
-    .select(`
-      *,
-      loans(id, status, remaining_balance)
-    `)
-    // .eq('user_id', user.id) <--- COMENTA ESTA LÍNEA PARA PROBAR
+    .select('*') // Primero solo '*' para asegurar que la tabla existe y responde
     .order('created_at', { ascending: false })
 
+  // LOGS PARA LA TERMINAL (Revisa tu consola de VS Code o Vercel)
   if (error) {
-    console.error("Error en la consulta de clientes:", error.message)
+    console.error("DEBUG: Error de Supabase:", error.message)
+    console.error("DEBUG: Código de error:", error.code)
   }
+  
+  console.log("DEBUG: Clientes encontrados en DB:", clients?.length)
 
-  // NORMALIZACIÓN: Aseguramos que los campos coincidan con lo que ClientsTable espera
+  // 3. NORMALIZACIÓN TOTAL
   const formattedClients = (clients || []).map(client => ({
     ...client,
-    // Si tu tabla espera 'name' pero en la DB es 'full_name', esto lo arregla:
-    name: client.full_name || client.name || "Sin nombre",
-    full_name: client.full_name || client.name || "Sin nombre",
-    // Agregamos conteo de préstamos para evitar errores en la tabla
-    loans_count: client.loans?.length || 0
+    id: client.id,
+    // Forzamos que 'name' tenga algo para que la tabla lo pinte
+    name: client.full_name || client.name || "Cliente sin nombre",
+    phone: client.phone || "N/A",
+    status: client.status || 'active'
   }))
 
   return (
@@ -50,11 +48,29 @@ export default async function ClientsPage() {
         <AddClientDialog />
       </div>
 
-      {/* Si formattedClients tiene datos pero la tabla sigue vacía, 
-          puedes poner este JSON temporalmente para ver si llegan datos: */}
-      {/* <pre className="text-[10px] bg-black text-white p-2">{JSON.stringify(formattedClients, null, 2)}</pre> */}
+      {/* BLOQUE DE DIAGNÓSTICO VISUAL: Si esto sale rojo, hay un problema grave */}
+      {formattedClients.length === 0 && (
+        <div className="p-4 border-2 border-red-500 bg-red-50 rounded-lg">
+          <h2 className="text-red-700 font-bold">Diagnóstico del Sistema:</h2>
+          <ul className="text-sm text-red-600 list-disc ml-5">
+            <li>Usuario logueado: {user ? user.email : "NO"}</li>
+            <li>Error de Query: {error ? error.message : "Ninguno"}</li>
+            <li>Registros recibidos: {clients ? clients.length : 0}</li>
+          </ul>
+          <p className="mt-2 text-xs text-gray-500 italic">
+            Si "Registros recibidos" es 0 pero ves datos en el panel de Supabase, revisa tus variables de entorno (SUPABASE_URL) en Vercel.
+          </p>
+        </div>
+      )}
 
-      <ClientsTable clients={formattedClients} />
+      {/* Solo mostramos la tabla si hay datos, si no, se queda el diagnóstico arriba */}
+      {formattedClients.length > 0 ? (
+        <ClientsTable clients={formattedClients} />
+      ) : (
+        <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed rounded-lg">
+           <p className="text-muted-foreground">Esperando datos de la base de datos...</p>
+        </div>
+      )}
     </div>
   )
 }
