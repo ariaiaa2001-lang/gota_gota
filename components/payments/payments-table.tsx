@@ -1,139 +1,99 @@
 'use client'
 
-import { useState } from 'react'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Search, CheckCircle, DollarSign } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
+import { Trash2 } from "lucide-react" // Importamos el icono de basura
+import { useRouter } from 'next/navigation'
+import { toast } from "sonner" // Asegúrate de tener instalada esta librería o usa alert()
 
 interface Payment {
   id: string
   amount: number
   payment_date: string
-  notes: string | null
-  created_at: string
-  clients: { name: string } | null
-  loans: { principal_amount: number; daily_payment: number } | null
+  notes: string
+  client_name: string
+  loan_info: string
 }
 
-interface PaymentsTableProps {
-  payments: Payment[]
-}
+export function PaymentsTable({ payments }: { payments: Payment[] }) {
+  const supabase = createClient()
+  const router = useRouter()
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
+  const handleDelete = async (id: string) => {
+    const confirmDelete = window.confirm("¿Estás seguro? Al eliminar este cobro, el saldo del préstamo aumentará automáticamente.")
+    
+    if (!confirmDelete) return
 
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('es-CO', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
+    try {
+      const { error } = await supabase
+        .from('payments')
+        .delete()
+        .eq('id', id)
 
-function formatTime(dateString: string): string {
-  return new Date(dateString).toLocaleTimeString('es-CO', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+      if (error) throw error
 
-export function PaymentsTable({ payments }: PaymentsTableProps) {
-  const [searchQuery, setSearchQuery] = useState('')
-
-  const filteredPayments = payments.filter((payment) =>
-    payment.clients?.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+      toast.success("Cobro eliminado")
+      router.refresh() // Esto obliga a la página a pedir los datos nuevos
+    } catch (error: any) {
+      console.error("Error al borrar:", error.message)
+      alert("No se pudo eliminar: " + error.message)
+    }
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por cliente..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-      </CardHeader>
-      <CardContent>
-        {filteredPayments.length === 0 ? (
-          <div className="py-12 text-center">
-            <DollarSign className="mx-auto h-12 w-12 text-muted-foreground/50" />
-            <h3 className="mt-4 text-lg font-medium">No hay cobros</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {searchQuery
-                ? 'No se encontraron cobros con esa busqueda'
-                : 'Los cobros apareceran aqui cuando registres pagos'}
-            </p>
-          </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Cliente</TableHead>
+          <TableHead>Fecha</TableHead>
+          <TableHead>Monto</TableHead>
+          <TableHead>Notas</TableHead>
+          <TableHead className="text-right w-[100px]">Acciones</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {payments.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+              No hay cobros registrados
+            </TableCell>
+          </TableRow>
         ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Monto</TableHead>
-                  <TableHead>Notas</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPayments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-50">
-                          <CheckCircle className="h-5 w-5 text-green-600" />
-                        </div>
-                        <div>
-                          <p className="font-medium">{payment.clients?.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Cuota: {formatCurrency(Number(payment.loans?.daily_payment || 0))}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{formatDate(payment.payment_date)}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {formatTime(payment.created_at)}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-medium text-green-600">
-                        +{formatCurrency(Number(payment.amount))}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {payment.notes || '-'}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          payments.map((payment) => (
+            <TableRow key={payment.id}>
+              <TableCell>
+                <div className="font-medium">{payment.client_name}</div>
+                <div className="text-xs text-muted-foreground">{payment.loan_info}</div>
+              </TableCell>
+              <TableCell>{new Date(payment.payment_date).toLocaleDateString()}</TableCell>
+              <TableCell className="text-emerald-600 font-bold">
+                +${Number(payment.amount).toLocaleString()}
+              </TableCell>
+              <TableCell className="max-w-[200px] truncate italic text-muted-foreground">
+                {payment.notes || '-'}
+              </TableCell>
+              <TableCell className="text-right">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => handleDelete(payment.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))
         )}
-      </CardContent>
-    </Card>
+      </TableBody>
+    </Table>
   )
 }
