@@ -63,7 +63,6 @@ export function SettingsForm({ settings }: SettingsFormProps) {
     }
   }
 
-  // --- FUNCIÓN DE SINCRONIZACIÓN REAL ---
   const handleSyncData = async () => {
     if (!masterAccountsUrl) {
       toast.error('Primero guarda la URL del Maestro de Cuentas')
@@ -78,35 +77,52 @@ export function SettingsForm({ settings }: SettingsFormProps) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuario no autenticado')
 
-      // 1. Convertir URL de Google Sheets a exportación CSV
+      // 1. Transformar URL de edición a exportación CSV pura
       const csvUrl = masterAccountsUrl.includes('/edit') 
         ? masterAccountsUrl.replace(/\/edit.*$/, '/export?format=csv')
-        : masterAccountsUrl + '&output=csv'
+        : masterAccountsUrl
 
       const response = await fetch(csvUrl)
-      const text = await response.text()
-
-      // 2. Procesar CSV (Simple)
-      // Asumimos: Columna A = Nombre, Columna B = Teléfono, Columna C = Dirección
-      const rows = text.split('\n').slice(1) // Quitamos el encabezado
+      if (!response.ok) throw new Error('No se pudo acceder al archivo de Google Sheets')
       
-      const clientsToImport = rows
-        .map(row => {
-          const columns = row.split(',')
+      const text = await response.text()
+      
+      // 2. Procesar filas (soporta comas y puntos y comas)
+      const lines = text.split(/\r?\n/).filter(line => line.trim() !== "")
+      
+      const clientsToImport = lines
+        .map(line => {
+          // Detectar separador común en CSV regionales
+          const columns = line.includes(';') ? line.split(';') : line.split(',')
+          
+          // Limpiar comillas y espacios de Google
+          const cleanName = columns[0]?.replace(/"/g, '').trim()
+          const cleanPhone = columns[1]?.replace(/"/g, '').trim()
+          const cleanAddress = columns[2]?.replace(/"/g, '').trim()
+
           return {
-            full_name: columns[0]?.trim(),
-            phone: columns[1]?.trim() || null,
-            address: columns[2]?.trim() || null,
+            full_name: cleanName,
+            phone: cleanPhone || null,
+            address: cleanAddress || null,
             user_id: user.id
           }
         })
-        .filter(c => c.full_name && c.full_name.length > 2) // Evitar filas vacías
+        // FILTRO DE SEGURIDAD: Evita importar encabezados o filas vacías
+        .filter(c => 
+          c.full_name && 
+          c.full_name.length > 2 && 
+          !c.full_name.toLowerCase().includes('nombre') &&
+          !c.full_name.toLowerCase().includes('maestro') &&
+          !c.full_name.toLowerCase().includes('cliente') &&
+          !c.full_name.toLowerCase().includes('full_name')
+        )
 
       if (clientsToImport.length === 0) {
-        throw new Error('No se encontraron datos válidos en la hoja')
+        throw new Error('No se encontraron datos en la Columna A. Revisa tu Excel.')
       }
 
-      // 3. Insertar en Supabase (Upsert para no duplicar si tienen el mismo nombre)
+      // 3. Insertar o Actualizar en Supabase
+      // Usamos upsert para evitar duplicar si el nombre es idéntico
       const { error: dbError } = await supabase
         .from('clients')
         .upsert(clientsToImport, { onConflict: 'full_name,user_id' })
@@ -114,11 +130,16 @@ export function SettingsForm({ settings }: SettingsFormProps) {
       if (dbError) throw dbError
 
       toast.success(`¡Éxito! ${clientsToImport.length} clientes sincronizados`, { id: toastId })
-      router.push('/dashboard/clients')
-      router.refresh()
+      
+      // Pequeña pausa para que el usuario vea el éxito antes de recargar
+      setTimeout(() => {
+        router.push('/dashboard/clients')
+        router.refresh()
+      }, 1500)
+      
     } catch (error: any) {
-      console.error(error)
-      toast.error('Error al sincronizar: Asegúrate que la hoja sea pública', { id: toastId })
+      console.error("Error en sincronización:", error)
+      toast.error(error.message || 'Error al sincronizar datos', { id: toastId })
     } finally {
       setIsSyncing(false)
     }
@@ -129,20 +150,20 @@ export function SettingsForm({ settings }: SettingsFormProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="shadow-md">
+      <CardHeader className="bg-slate-50/50 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-green-600" />
-            <CardTitle>Google Sheets</CardTitle>
+            <CardTitle className="text-lg">Google Sheets</CardTitle>
           </div>
-          {settings?.master_accounts_url && (
+          {masterAccountsUrl && (
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleSyncData} 
               disabled={isSyncing}
-              className="text-green-600 border-green-200 hover:bg-green-50"
+              className="text-green-700 border-green-200 hover:bg-green-50"
             >
               {isSyncing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Sincronizar Datos
@@ -150,13 +171,15 @@ export function SettingsForm({ settings }: SettingsFormProps) {
           )}
         </div>
         <CardDescription>
-          Configura tus hojas de cálculo para importar clientes y reportes automáticamente.
+          Vincula tus hojas de cálculo para cargar clientes y cobros de forma masiva.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="master-url">URL Maestro de Cuentas (Clientes)</Label>
+            <Label htmlFor="master-url" className="text-xs font-bold uppercase text-slate-500">
+              URL Maestro de Cuentas (Hoja de Clientes)
+            </Label>
             <div className="flex gap-2">
               <Input
                 id="master-url"
@@ -164,23 +187,29 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                 placeholder="https://docs.google.com/spreadsheets/d/..."
                 value={masterAccountsUrl}
                 onChange={(e) => setMasterAccountsUrl(e.target.value)}
-                className="flex-1 font-mono text-xs"
+                className="flex-1 font-mono text-xs bg-slate-50/50"
               />
               {masterAccountsUrl && (
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   onClick={() => openUrl(masterAccountsUrl)}
+                  title="Abrir hoja de cálculo"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="h-4 w-4 text-slate-400" />
                 </Button>
               )}
             </div>
+            <p className="text-[10px] text-muted-foreground italic">
+              * El sistema leerá: Columna A (Nombre), B (Teléfono), C (Dirección).
+            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="daily-url">URL Reporte Diario (Pagos)</Label>
+            <Label htmlFor="daily-url" className="text-xs font-bold uppercase text-slate-500">
+              URL Reporte Diario (Hoja de Cobros)
+            </Label>
             <div className="flex gap-2">
               <Input
                 id="daily-url"
@@ -188,30 +217,27 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                 placeholder="https://docs.google.com/spreadsheets/d/..."
                 value={dailyReportUrl}
                 onChange={(e) => setDailyReportUrl(e.target.value)}
-                className="flex-1 font-mono text-xs"
+                className="flex-1 font-mono text-xs bg-slate-50/50"
               />
               {dailyReportUrl && (
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   onClick={() => openUrl(dailyReportUrl)}
+                  title="Abrir reporte diario"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="h-4 w-4 text-slate-400" />
                 </Button>
               )}
             </div>
           </div>
 
-          <div className="pt-2 flex flex-col gap-2">
-            <Button type="submit" disabled={isLoading} className="w-full">
+          <div className="pt-2">
+            <Button type="submit" disabled={isLoading} className="w-full font-bold">
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Guardar URLs
+              Guardar URLs de Configuración
             </Button>
-            
-            <p className="text-[10px] text-center text-muted-foreground italic">
-              * Recuerda que el archivo de Google debe estar en modo "Cualquier persona con el enlace puede ver".
-            </p>
           </div>
         </form>
       </CardContent>
