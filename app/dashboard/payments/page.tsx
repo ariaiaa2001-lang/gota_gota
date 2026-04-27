@@ -1,4 +1,4 @@
-
+import { createClient } from '@/lib/supabase/server'
 import { PaymentsTable } from '@/components/payments/payments-table'
 import { PaymentsSummary } from '@/components/payments/payments-summary'
 import { redirect } from 'next/navigation'
