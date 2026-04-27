@@ -20,10 +20,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { MoreHorizontal, Search, Wallet, User } from 'lucide-react'
+import { 
+  Sheet, 
+  SheetContent, 
+  SheetHeader, 
+  SheetTitle, 
+  SheetDescription 
+} from "@/components/ui/sheet" // Asegúrate de tener este componente
+import { MoreHorizontal, Search, Wallet, User, History, ArrowDownCircle } from 'lucide-react'
 import { RegisterPaymentDialog } from './register-payment-dialog'
+import { createClient } from '@/lib/supabase/client' // Importamos el cliente para la sub-consulta
 import Link from 'next/link'
 
+// ... interfaces y funciones formatCurrency/formatDate se mantienen igual ...
 interface Client {
   id: string
   name: string
@@ -74,9 +83,15 @@ const statusConfig = {
 }
 
 export function LoansTable({ loans }: LoansTableProps) {
+  const supabase = createClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [payingLoan, setPayingLoan] = useState<Loan | null>(null)
+  
+  // Estados para el Historial
+  const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null)
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   const filteredLoans = loans.filter((loan) => {
     const matchesSearch =
@@ -85,6 +100,23 @@ export function LoansTable({ loans }: LoansTableProps) {
     const matchesStatus = statusFilter === 'all' || loan.status === statusFilter
     return matchesSearch && matchesStatus
   })
+
+  // Función para obtener el historial cuando se hace clic
+  const handleOpenHistory = async (loan: Loan) => {
+    setSelectedLoan(loan)
+    setLoadingHistory(true)
+    
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('loan_id', loan.id)
+      .order('payment_date', { ascending: false })
+
+    if (!error) {
+      setPaymentHistory(data || [])
+    }
+    setLoadingHistory(false)
+  }
 
   const getProgressPercentage = (loan: Loan) => {
     const paid = Number(loan.total_amount) - Number(loan.remaining_balance)
@@ -153,7 +185,13 @@ export function LoansTable({ loans }: LoansTableProps) {
                               <User className="h-5 w-5 text-primary" />
                             </div>
                             <div>
-                              <p className="font-medium">{loan.clients?.name}</p>
+                              {/* NOMBRE DEL CLIENTE COMO BOTÓN PARA EL HISTORIAL */}
+                              <button 
+                                onClick={() => handleOpenHistory(loan)}
+                                className="font-medium hover:underline text-left text-primary"
+                              >
+                                {loan.clients?.name}
+                              </button>
                               <p className="text-sm text-muted-foreground">
                                 {formatDate(loan.start_date)}
                               </p>
@@ -206,6 +244,9 @@ export function LoansTable({ loans }: LoansTableProps) {
                                   Registrar cobro
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuItem onClick={() => handleOpenHistory(loan)}>
+                                Ver historial de pagos
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -219,6 +260,85 @@ export function LoansTable({ loans }: LoansTableProps) {
         </CardContent>
       </Card>
 
+      {/* PANEL LATERAL DE HISTORIAL */}
+      <Sheet open={!!selectedLoan} onOpenChange={(open) => !open && setSelectedLoan(null)}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Historial de Pagos
+            </SheetTitle>
+            <SheetDescription>
+              Resumen de abonos para {selectedLoan?.clients?.name}
+            </SheetDescription>
+          </SheetHeader>
+
+          {selectedLoan && (
+            <div className="space-y-6">
+              {/* Resumen rápido en el panel */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Saldo Actual</p>
+                  <p className="text-lg font-bold text-amber-600">
+                    {formatCurrency(selectedLoan.remaining_balance)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase">Meta Total</p>
+                  <p className="text-lg font-bold">
+                    {formatCurrency(selectedLoan.total_amount)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Lista de pagos */}
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm flex items-center gap-2">
+                  <ArrowDownCircle className="h-4 w-4 text-emerald-500" />
+                  Pagos realizados
+                </h4>
+                
+                {loadingHistory ? (
+                  <div className="py-8 text-center text-muted-foreground">Cargando historial...</div>
+                ) : paymentHistory.length === 0 ? (
+                  <div className="py-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                    No se han registrado pagos aún.
+                  </div>
+                ) : (
+                  <div className="relative border-l-2 border-muted ml-2 pl-4 space-y-6">
+                    {paymentHistory.map((payment) => (
+                      <div key={payment.id} className="relative">
+                        <div className="absolute -left-[25px] top-1 h-4 w-4 rounded-full bg-emerald-500 border-4 border-background" />
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-emerald-600">
+                              {formatCurrency(payment.amount)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(payment.payment_date).toLocaleDateString('es-CO', { 
+                                weekday: 'long', 
+                                day: 'numeric', 
+                                month: 'long' 
+                              })}
+                            </p>
+                          </div>
+                          {payment.notes && (
+                            <Badge variant="outline" className="text-[10px] max-w-[100px] truncate">
+                              {payment.notes}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* DIÁLOGOS EXISTENTES */}
       {payingLoan && (
         <RegisterPaymentDialog
           loan={payingLoan}
