@@ -35,13 +35,14 @@ export function AddClientDialog() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
-        toast.error('No se pudo obtener el usuario')
+        toast.error('No se pudo obtener el usuario. Inicia sesión de nuevo.')
         return
       }
 
+      // Corrección: Usamos 'full_name' que es el nombre real de la columna en Supabase
       const { error } = await supabase.from('clients').insert({
         user_id: user.id,
-        name,
+        full_name: name, // Cambiado de 'name: name' a 'full_name: name'
         phone: phone || null,
         address: address || null,
       })
@@ -49,14 +50,19 @@ export function AddClientDialog() {
       if (error) throw error
 
       toast.success('Cliente agregado exitosamente')
+      
+      // Limpiar formulario y cerrar
       setOpen(false)
       setName('')
       setPhone('')
       setAddress('')
+      
+      // Refrescar la página para ver los cambios
       router.refresh()
-    } catch (error) {
-      toast.error('Error al agregar el cliente')
-      console.error(error)
+      
+    } catch (error: any) {
+      toast.error('Error al agregar el cliente: ' + error.message)
+      console.error('Error de Supabase:', error)
     } finally {
       setIsLoading(false)
     }
@@ -70,26 +76,26 @@ export function AddClientDialog() {
           Nuevo Cliente
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Agregar Nuevo Cliente</DialogTitle>
           <DialogDescription>
-            Ingresa los datos del nuevo cliente
+            Ingresa los datos del nuevo cliente para tu cartera.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
           <div className="space-y-2">
             <Label htmlFor="name">Nombre Completo *</Label>
             <Input
               id="name"
-              placeholder="Juan Perez"
+              placeholder="Ej: Juan Perez"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="phone">Telefono</Label>
+            <Label htmlFor="phone">Teléfono</Label>
             <Input
               id="phone"
               type="tel"
@@ -99,26 +105,33 @@ export function AddClientDialog() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="address">Direccion</Label>
+            <Label htmlFor="address">Dirección</Label>
             <Textarea
               id="address"
-              placeholder="Calle 123 # 45-67, Barrio Centro"
+              placeholder="Barrio Centro, Calle 10 #2-3"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              rows={2}
+              rows={3}
             />
           </div>
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-4">
             <Button
               type="button"
               variant="outline"
               onClick={() => setOpen(false)}
+              disabled={isLoading}
             >
               Cancelar
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Agregar Cliente
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                'Agregar Cliente'
+              )}
             </Button>
           </div>
         </form>
