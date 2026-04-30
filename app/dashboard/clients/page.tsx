@@ -8,56 +8,46 @@ export const dynamic = 'force-dynamic'
 export default async function ClientsPage() {
   const supabase = await createClient()
   
-  // 1. Verificar usuario
+  // Verificación de usuario rápida
   const { data: { user } } = await supabase.auth.getUser()
-  
-  if (!user) {
-    return <div className="p-10 text-center">No has iniciado sesión.</div>
-  }
+  if (!user) return <div className="p-10">Acceso denegado.</div>
 
-  // 2. Consulta ultra-simple (sin joins de loans)
-  const { data: clients, error } = await supabase
+  // Consulta plana: traemos todo de la tabla 'clients'
+  const { data: rawClients, error } = await supabase
     .from('clients')
     .select('*')
     .order('created_at', { ascending: false })
 
   if (error) {
-    console.error("Error de Supabase:", error.message)
+    console.error("Error cargando tabla:", error.message)
   }
 
-  // 3. Mapeo seguro de datos
-  const formattedClients = (clients || []).map((c: any) => ({
-    ...c,
-    // Priorizamos full_name que es el estándar de tu DB
-    name: c.full_name || c.name || "Sin nombre",
-    loans: [] // Array vacío para que la tabla no rompa al buscar .length
+  // Formateo de datos a prueba de errores
+  const clients = (rawClients || []).map((item) => ({
+    ...item,
+    name: item.full_name || item.name || "Sin nombre",
+    loans: [] // Evita errores de lectura en la tabla de componentes
   }))
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
-          <p className="text-muted-foreground">
-            Total registrados: {formattedClients.length}
-          </p>
+          <h1 className="text-2xl font-bold">Cartera de Clientes</h1>
+          <p className="text-sm text-muted-foreground">Registros actuales: {clients.length}</p>
         </div>
         <AddClientDialog />
-      </div>
+      </header>
 
-      <hr className="border-muted" />
+      <hr className="opacity-10" />
 
-      {formattedClients.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed">
-          <Users className="h-10 w-10 text-slate-300 mb-4" />
-          <h3 className="text-lg font-medium">No se encontraron clientes</h3>
-          <p className="text-sm text-muted-foreground mb-6">
-            Intenta agregar uno nuevo para verificar la conexión.
-          </p>
-          <AddClientDialog />
+      {clients.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 border border-dashed rounded-2xl">
+          <Users className="h-12 w-12 text-muted-foreground/30 mb-4" />
+          <p className="text-muted-foreground">No se encontraron registros de clientes.</p>
         </div>
       ) : (
-        <ClientsTable clients={formattedClients} />
+        <ClientsTable clients={clients} />
       )}
     </div>
   )
