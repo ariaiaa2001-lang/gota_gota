@@ -19,12 +19,14 @@ export default async function PaymentsPage() {
   const today = new Date().toISOString().split('T')[0]
   const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
 
-  // 2. Consulta de Datos (Préstamos activos + Pagos)
-  const [loansRes, paymentsRes, todayRes, monthRes] = await Promise.all([
+  // 2. Consulta de Datos Multidimensión
+  const [loansRes, historyRes, todayRes, monthRes] = await Promise.all([
+    // Ruta: Préstamos activos para cobrar
     supabase
       .from('loans')
       .select('*, clients(full_name)')
       .eq('status', 'active'),
+    // Historial: Los últimos 20 pagos realizados globalmente
     supabase
       .from('payments')
       .select(`
@@ -33,35 +35,35 @@ export default async function PaymentsPage() {
         loans ( principal_amount, daily_payment )
       `)
       .order('created_at', { ascending: false })
-      .limit(50),
+      .limit(20),
+    // Totales: Lo que ha entrado HOY
     supabase
       .from('payments')
       .select('amount, loan_id')
       .eq('payment_date', today),
+    // Totales: Lo que ha entrado el MES
     supabase
       .from('payments')
       .select('amount')
       .gte('payment_date', startOfMonth),
   ])
 
-  // 3. Lógica de "Ruta del Día" (Pendientes vs Pagados)
+  // 3. Procesamiento de la "Ruta de Cobro"
   const activeLoans = loansRes.data || []
-  const allPayments = paymentsRes.data || []
   const todayPaymentsData = todayRes.data || []
+  const historyPayments = historyRes.data || []
   
-  // Creamos un set con los IDs de préstamos que ya recibieron pago hoy
+  // Identificamos quién ya pagó hoy para quitarlo de la lista de pendientes
   const paidLoanIds = new Set(todayPaymentsData.map(p => p.loan_id))
-  
-  // Filtramos los préstamos que NO están en el set de pagados
   const pendingPayments = activeLoans.filter(loan => !paidLoanIds.has(loan.id))
 
-  // 4. Cálculos para el resumen
+  // 4. Cálculos para las tarjetas superiores
   const todayTotal = todayPaymentsData.reduce((sum, p) => sum + Number(p.amount), 0) || 0
   const monthTotal = monthRes.data?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
   const todayCount = todayPaymentsData.length
 
-  // 5. Formateo para la tabla de historial
-  const formattedPayments = allPayments.map(p => ({
+  // 5. Formateo de datos para la tabla de historial
+  const formattedHistory = historyPayments.map(p => ({
     ...p,
     client_name: (p as any).clients?.full_name || "Cliente no identificado",
     loan_info: (p as any).loans 
@@ -77,29 +79,32 @@ export default async function PaymentsPage() {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Ruta de Cobro</h1>
           <p className="text-sm text-slate-500">
             {pendingPayments.length > 0 
-              ? `Tienes ${pendingPayments.length} cobros pendientes para hoy.` 
-              : '¡Día completado! No quedan cobros pendientes.'}
+              ? `Faltan ${pendingPayments.length} clientes por cobrar hoy.` 
+              : '¡Excelente trabajo! No tienes cobros pendientes.'}
           </p>
         </div>
         <CreatePaymentDialog />
       </div>
 
-      {/* RESUMEN DE TOTALES */}
+      {/* RESUMEN DE DINERO */}
       <PaymentsSummary
         todayTotal={todayTotal}
         monthTotal={monthTotal}
         todayCount={todayCount}
       />
 
-      {/* SECCIÓN 1: PENDIENTES (CARDS DE COBRO RÁPIDO) */}
+      {/* SECCIÓN: RUTA DEL DÍA (PENDIENTES) */}
       <div className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Pendientes de hoy</h2>
+        <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+          Pendientes de hoy
+        </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {pendingPayments.map((loan) => (
-            <div key={loan.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center justify-between hover:border-blue-300 transition-colors">
+            <div key={loan.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
               <div className="space-y-1">
-                <p className="font-bold text-slate-700">{(loan as any).clients?.full_name}</p>
-                <p className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full inline-block">
+                <p className="font-bold text-slate-800 uppercase text-sm">{(loan as any).clients?.full_name}</p>
+                <p className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md inline-block">
                   Cuota: ${new Intl.NumberFormat('es-CO').format(loan.daily_payment)}
                 </p>
               </div>
@@ -111,29 +116,29 @@ export default async function PaymentsPage() {
             </div>
           ))}
           {pendingPayments.length === 0 && (
-            <div className="col-span-full py-10 text-center bg-emerald-50 border-2 border-dashed border-emerald-200 rounded-xl">
-              <p className="text-emerald-700 font-medium">✅ Todos los cobros del día han sido realizados</p>
+            <div className="col-span-full py-12 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl">
+              <p className="text-slate-400 font-medium">No hay cobros pendientes para mostrar.</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* SECCIÓN 2: HISTORIAL DE COBROS */}
-      <div className="space-y-4 pt-6 border-t">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Historial Reciente</h2>
-        <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-          {formattedPayments.length > 0 ? (
-            <PaymentsTable payments={formattedPayments} />
+      {/* SECCIÓN: HISTORIAL DE PAGOS */}
+      <div className="space-y-4 pt-6 border-t border-slate-100">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Historial Reciente</h2>
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          {formattedHistory.length > 0 ? (
+            <PaymentsTable payments={formattedHistory} />
           ) : (
             <div className="p-12 text-center text-slate-400">
-              No hay registros de cobros aún.
+              Todavía no se han registrado cobros en el sistema.
             </div>
           )}
         </div>
       </div>
 
-      <p className="text-[10px] text-slate-400 text-center uppercase tracking-widest">
-        Sistema de Gestión | Operador: {user.email}
+      <p className="text-[10px] text-slate-300 text-center uppercase tracking-[0.2em] pt-4">
+        Sistema de Gestión Profesional | Operador: {user.email}
       </p>
     </div>
   )
