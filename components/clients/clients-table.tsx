@@ -30,7 +30,7 @@ export function ClientsTable({ clients = [] }: { clients: any[] }) {
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
-            placeholder="Buscar por nombre o teléfono..." 
+            placeholder="Buscar..." 
             className="pl-10" 
             value={search} 
             onChange={(e) => setSearch(e.target.value)}
@@ -42,41 +42,35 @@ export function ClientsTable({ clients = [] }: { clients: any[] }) {
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow>
-                <TableHead>Cliente / Dirección</TableHead>
+                <TableHead>Cliente</TableHead>
                 <TableHead>Teléfono</TableHead>
                 <TableHead>Préstamos</TableHead>
                 <TableHead>Saldo Pendiente</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((client) => (
-                <TableRow key={client.id} className="hover:bg-slate-50/50">
+                <TableRow key={client.id}>
                   <TableCell>
                     <div className="flex flex-col">
-                      <span className="font-bold text-slate-900">{client.full_name}</span>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <MapPin className="h-3 w-3" /> {client.address || 'Sin dirección'}
-                      </span>
+                      <span className="font-bold">{client.full_name}</span>
+                      <span className="text-xs text-muted-foreground">{client.address}</span>
                     </div>
                   </TableCell>
+                  <TableCell>{client.phone}</TableCell>
                   <TableCell>
-                    <span className="text-sm flex items-center gap-2 text-slate-600">
-                      <Phone className="h-3 w-3" /> {client.phone || '-'}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={client.active_loans_count > 0 ? "default" : "outline"} className="font-medium">
-                      {client.active_loans_count || 0} activos
+                    <Badge variant={client.active_loans_count > 0 ? "default" : "secondary"}>
+                      {client.active_loans_count} activos
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <span className={`font-semibold ${client.total_pending > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-                      {formatCurrency(client.total_pending || 0)}
+                    <span className="font-bold text-emerald-600">
+                      {formatCurrency(client.total_pending)}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" asChild>
+                    <Button variant="ghost" asChild>
                       <Link href={`/dashboard/clients/${client.id}`}>Ver</Link>
                     </Button>
                   </TableCell>
