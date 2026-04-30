@@ -1,24 +1,25 @@
 import { createClient } from '@/lib/supabase/server'
 import { PaymentsTable } from '@/components/payments/payments-table'
 import { PaymentsSummary } from '@/components/payments/payments-summary'
-import { Button } from '@/components/ui/button'
-import { PlusCircle } from 'lucide-react'
+import { CreatePaymentDialog } from '@/components/payments/create-payment-dialog'
 import { redirect } from 'next/navigation'
 
+// Forzar que la página siempre busque datos frescos
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export default async function PaymentsPage() {
   const supabase = await createClient()
   
-  // 1. Verificación de seguridad
+  // 1. Verificación de sesión
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // 2. Configuración de fechas (Hoy y Primero de mes)
   const today = new Date().toISOString().split('T')[0]
   const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
 
-  // 2. Consulta de datos con relaciones
+  // 3. Consulta de datos (Historial, Total Hoy, Total Mes)
   const [paymentsRes, todayRes, monthRes] = await Promise.all([
     supabase
       .from('payments')
@@ -41,64 +42,54 @@ export default async function PaymentsPage() {
 
   const payments = paymentsRes.data || []
   
-  // 3. Cálculos para el Resumen
+  // 4. Cálculos para las tarjetas de resumen
   const todayTotal = todayRes.data?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
   const monthTotal = monthRes.data?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
   const todayCount = todayRes.data?.length || 0
 
-  // 4. Formateo de datos para la tabla
+  // 5. Formateo de datos para la tabla
   const formattedPayments = payments.map(p => ({
     ...p,
     client_name: (p as any).clients?.full_name || "Cliente no identificado",
     loan_info: (p as any).loans 
-      ? `Crédito: ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format((p as any).loans.principal_amount)}` 
+      ? `Cuota: ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format((p as any).loans.daily_payment)}` 
       : "N/A"
   }))
 
   return (
     <div className="p-6 space-y-6">
-      {/* Cabecera con botón de acción */}
+      {/* Cabecera con el Botón Funcional */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Historial de Cobros</h1>
           <p className="text-sm text-slate-500">Consulta y registra los pagos recibidos hoy.</p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all">
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Registrar Cobro Manual
-        </Button>
+        
+        {/* Este componente es el que creamos para abrir el modal */}
+        <CreatePaymentDialog />
       </div>
 
-      {/* Resumen de totales (Cuadritos de arriba) */}
+      {/* Resumen de totales */}
       <PaymentsSummary
         todayTotal={todayTotal}
         monthTotal={monthTotal}
         todayCount={todayCount}
       />
 
-      {/* Alerta si no hay datos */}
-      {payments.length === 0 && (
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-8 text-center">
-          <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-            <PlusCircle className="h-6 w-6 text-blue-600" />
-          </div>
-          <h3 className="text-blue-900 font-semibold text-lg">No hay cobros registrados</h3>
-          <p className="text-blue-700/70 text-sm max-w-xs mx-auto mt-1">
-            Los pagos que realices hoy aparecerán en esta lista automáticamente.
-          </p>
-        </div>
-      )}
-
-      {/* Tabla de resultados */}
-      {payments.length > 0 && (
-        <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+      {/* Tabla o Mensaje de "No hay datos" */}
+      <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+        {payments.length > 0 ? (
           <PaymentsTable payments={formattedPayments} />
-        </div>
-      )}
+        ) : (
+          <div className="p-12 text-center">
+            <p className="text-slate-500 font-medium">No se encontraron cobros registrados.</p>
+            <p className="text-slate-400 text-sm">Usa el botón superior para registrar el primero.</p>
+          </div>
+        )}
+      </div>
 
-      {/* Footer informativo */}
-      <p className="text-[10px] text-slate-400 text-center">
-        ID de Operador: {user.id} | Sincronización en tiempo real activa
+      <p className="text-[10px] text-slate-400 text-center uppercase tracking-widest">
+        Sistema de Gestión | Operador: {user.email}
       </p>
     </div>
   )
