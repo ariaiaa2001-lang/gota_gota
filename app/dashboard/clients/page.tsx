@@ -9,37 +9,26 @@ export const revalidate = 0
 export default async function ClientsPage() {
   const supabase = await createClient()
   
-  // 1. Validamos la sesión del usuario
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   
   if (authError || !user) {
     return (
       <div className="p-6 text-center">
-        <p className="text-red-500">Sesión no encontrada. Por favor inicia sesión de nuevo.</p>
+        <p className="text-red-500">Sesión no encontrada.</p>
       </div>
     )
   }
 
-  // 2. Consulta a la base de datos
-  // Traemos los clientes. Si loans falla, la consulta de clientes aún funcionará.
+  // CONSULTA SIMPLIFICADA: Eliminamos el join de 'loans' para que no falle
   const { data: clients, error: dbError } = await supabase
     .from('clients')
-    .select(`
-      *,
-      loans (
-        id,
-        status,
-        remaining_balance
-      )
-    `)
+    .select('*') 
     .order('created_at', { ascending: false })
 
-  // 3. Normalización de datos con salvavidas
-  // Esto asegura que si la columna se llama full_name o name, funcione igual.
   const formattedClients = (clients || []).map(client => ({
     ...client,
-    name: client.full_name || client.name || "Sin nombre registrado",
-    loans: client.loans || []
+    name: client.full_name || client.name || "Sin nombre",
+    loans: [] // Lo mandamos vacío por ahora
   }))
 
   return (
@@ -56,11 +45,10 @@ export default async function ClientsPage() {
 
       <hr className="border-muted" />
 
-      {/* Alerta de error de base de datos (solo visible si algo falla) */}
       {dbError && (
         <div className="bg-destructive/10 p-4 rounded-lg flex items-center gap-3 text-destructive">
           <AlertCircle className="h-5 w-5" />
-          <p className="text-sm font-medium">Error al conectar con la base de datos: {dbError.message}</p>
+          <p className="text-sm font-medium">Error: {dbError.message}</p>
         </div>
       )}
 
@@ -69,10 +57,7 @@ export default async function ClientsPage() {
           <div className="bg-blue-50 p-4 rounded-full mb-4">
             <Users className="h-10 w-10 text-blue-500" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-900">No se encontraron clientes</h3>
-          <p className="text-slate-500 text-sm max-w-xs text-center mt-1 mb-6">
-            Si ya subiste datos, asegúrate de que el RLS esté desactivado o que los registros tengan tu ID de usuario.
-          </p>
+          <h3 className="text-lg font-semibold text-slate-900">No hay clientes visibles</h3>
           <AddClientDialog />
         </div>
       ) : (
