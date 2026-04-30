@@ -3,75 +3,53 @@ import { ClientsTable } from '@/components/clients/clients-table'
 import { AddClientDialog } from '@/components/clients/add-client-dialog'
 
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
+export const revalidate = 0 // Fuerza a que NO guarde caché
 
 export default async function ClientsPage() {
   const supabase = await createClient()
   
-  // 1. Traemos los clientes (Tu consulta original que sí funciona)
-  const { data: clients, error: clientsError } = await supabase
+  // 1. Traer clientes
+  const { data: clients } = await supabase
     .from('clients')
-    .select('*') 
+    .select('*')
     .order('full_name', { ascending: true })
 
-  // 2. Traemos todos los préstamos activos con sus pagos para calcular saldos
-  // Lo hacemos por separado para no afectar el listado de clientes si algo falla
-  const { data: allLoans } = await supabase
+  // 2. Traer préstamos con sus pagos
+  const { data: loans } = await supabase
     .from('loans')
     .select('*, payments(amount)')
     .eq('status', 'active')
 
-  if (clientsError) {
-    console.error("Error de Supabase:", clientsError.message)
-  }
-
-  // 3. Cruzamos la información manualmente
+  // 3. Mapeo ultra-seguro
   const formattedClients = (clients || []).map(client => {
-    // Buscamos los préstamos que le pertenecen a este cliente
-    const clientLoans = allLoans?.filter(loan => loan.client_id === client.id) || []
+    // Filtrar préstamos de este cliente
+    const clientLoans = loans?.filter(l => l.client_id === client.id) || []
     
-    // Calculamos el saldo pendiente real
+    // Calcular deuda
     const totalPending = clientLoans.reduce((acc, loan) => {
-      const paid = loan.payments?.reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0
-      const balance = Number(loan.total_amount) - paid
-      return acc + (balance > 0 ? balance : 0)
+      const totalLoan = Number(loan.total_amount) || 0
+      const paid = loan.payments?.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0) || 0
+      return acc + (totalLoan - paid)
     }, 0)
+
+    // LOG DE CONTROL: Mira tu terminal cuando cargues la página
+    console.log(`Cliente: ${client.full_name} | Préstamos: ${clientLoans.length} | Deuda: ${totalPending}`)
 
     return {
       ...client,
-      name: client.full_name || "Sin nombre", // Mantenemos tu mapeo original
-      active_loans_count: clientLoans.length, // Para la columna de "Préstamos"
-      total_pending: totalPending,            // Para la columna de "Saldo Pendiente"
-      loans: clientLoans                      // Mantenemos la estructura de array
+      active_loans_count: clientLoans.length,
+      total_pending: totalPending,
+      loans: clientLoans // Esto es vital para que la tabla lo vea
     }
   })
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">Clientes</h1>
-          <p className="text-sm text-slate-500">
-            Total en base de datos: <strong>{formattedClients.length}</strong>
-          </p>
-        </div>
-        {/* Usamos exactamente el nombre de tu componente original */}
+        <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
         <AddClientDialog />
       </div>
-
-      <hr className="border-slate-200" />
-
-      {formattedClients.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border-2 border-dashed border-slate-200">
-          <h3 className="text-lg font-semibold text-slate-700">No se encontraron clientes</h3>
-          <p className="text-sm text-slate-500 mb-4">La base de datos no devolvió registros.</p>
-          <AddClientDialog />
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <ClientsTable clients={formattedClients} />
-        </div>
-      )}
+      <ClientsTable clients={formattedClients} />
     </div>
   )
 }
