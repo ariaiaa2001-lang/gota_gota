@@ -32,12 +32,12 @@ interface Loan {
 
 interface Client {
   id: string
-  name: string
-  full_name?: string // Por si viene con este nombre desde la DB
+  name?: string // Opcional
+  full_name?: string // Prioridad para datos de Supabase
   phone: string | null
   address: string | null
   created_at: string
-  loans?: Loan[] // Opcional para evitar errores
+  loans?: Loan[]
 }
 
 interface ClientsTableProps {
@@ -58,19 +58,19 @@ export function ClientsTable({ clients = [] }: ClientsTableProps) {
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [deletingClient, setDeletingClient] = useState<Client | null>(null)
 
-  // Filtro con protección contra nulos
+  // Filtro corregido para priorizar full_name
   const filteredClients = (clients || []).filter((client) => {
-    const clientName = (client.name || client.full_name || "").toLowerCase()
-    const clientPhone = client.phone || ""
+    // Priorizamos full_name que es lo que cargamos desde el CSV
+    const displayName = (client.full_name || client.name || "").toLowerCase()
+    const clientPhone = (client.phone || "").toLowerCase()
     const clientAddress = (client.address || "").toLowerCase()
     const search = searchQuery.toLowerCase()
 
-    return clientName.includes(search) || 
+    return displayName.includes(search) || 
            clientPhone.includes(search) || 
            clientAddress.includes(search)
   })
 
-  // Funciones de préstamos con protección contra undefined
   const getActiveLoans = (loans: Loan[] = []) => {
     return (loans || []).filter(l => l.status === 'active')
   }
@@ -88,7 +88,7 @@ export function ClientsTable({ clients = [] }: ClientsTableProps) {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nombre, telefono o direccion..."
+                placeholder="Buscar por nombre, teléfono o dirección..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -102,7 +102,7 @@ export function ClientsTable({ clients = [] }: ClientsTableProps) {
               <User className="mx-auto h-12 w-12 text-muted-foreground/50" />
               <h3 className="mt-4 text-lg font-medium">No se encontraron clientes</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                {searchQuery ? 'Prueba con otro término' : 'Aún no hay clientes registrados'}
+                {searchQuery ? 'Prueba con otro término' : 'Aún no hay clientes registrados o asignados a tu cuenta'}
               </p>
             </div>
           ) : (
@@ -121,6 +121,8 @@ export function ClientsTable({ clients = [] }: ClientsTableProps) {
                   {filteredClients.map((client) => {
                     const activeLoans = getActiveLoans(client.loans)
                     const totalDebt = getTotalDebt(client.loans)
+                    // Usar full_name preferiblemente
+                    const finalName = client.full_name || client.name || "Sin nombre"
 
                     return (
                       <TableRow key={client.id}>
@@ -130,7 +132,7 @@ export function ClientsTable({ clients = [] }: ClientsTableProps) {
                               <User className="h-5 w-5 text-primary" />
                             </div>
                             <div>
-                              <p className="font-medium">{client.name || client.full_name}</p>
+                              <p className="font-medium">{finalName}</p>
                               {client.address && (
                                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                                   <MapPin className="h-3 w-3" />
