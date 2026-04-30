@@ -3,51 +3,75 @@ import { ClientsTable } from '@/components/clients/clients-table'
 import { AddClientDialog } from '@/components/clients/add-client-dialog'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function ClientsPage() {
-  const supabase = await createClient()
-  
-  // Traemos TODO de la tabla clients sin filtros ni relaciones raras
-  const { data: clients, error } = await supabase
-    .from('clients')
-    .select('*') 
-    .order('full_name', { ascending: true })
+  const supabase = await createClient()
+  
+  // 1. Traemos los clientes (Tu consulta original que sí funciona)
+  const { data: clients, error: clientsError } = await supabase
+    .from('clients')
+    .select('*') 
+    .order('full_name', { ascending: true })
 
-  if (error) {
-    console.error("Error de Supabase:", error.message)
-  }
+  // 2. Traemos todos los préstamos activos con sus pagos para calcular saldos
+  // Lo hacemos por separado para no afectar el listado de clientes si algo falla
+  const { data: allLoans } = await supabase
+    .from('loans')
+    .select('*, payments(amount)')
+    .eq('status', 'active')
 
-  // Normalizamos los datos para que la tabla los entienda
-  const formattedClients = (clients || []).map(client => ({
-    ...client,
-    // Forzamos el uso de full_name que es lo que tienes en Supabase
-    name: client.full_name || "Sin nombre", 
-    loans: [] // Lo dejamos vacío por ahora para que no de error
-  }))
+  if (clientsError) {
+    console.error("Error de Supabase:", clientsError.message)
+  }
 
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
-          <p className="text-muted-foreground">
-            Total en base de datos: {formattedClients.length}
-          </p>
-        </div>
-        <AddClientDialog />
-      </div>
+  // 3. Cruzamos la información manualmente
+  const formattedClients = (clients || []).map(client => {
+    // Buscamos los préstamos que le pertenecen a este cliente
+    const clientLoans = allLoans?.filter(loan => loan.client_id === client.id) || []
+    
+    // Calculamos el saldo pendiente real
+    const totalPending = clientLoans.reduce((acc, loan) => {
+      const paid = loan.payments?.reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0
+      const balance = Number(loan.total_amount) - paid
+      return acc + (balance > 0 ? balance : 0)
+    }, 0)
 
-      <hr className="border-muted" />
+    return {
+      ...client,
+      name: client.full_name || "Sin nombre", // Mantenemos tu mapeo original
+      active_loans_count: clientLoans.length, // Para la columna de "Préstamos"
+      total_pending: totalPending,            // Para la columna de "Saldo Pendiente"
+      loans: clientLoans                      // Mantenemos la estructura de array
+    }
+  })
 
-      {formattedClients.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border-2 border-dashed">
-          <h3 className="text-lg font-semibold">No se encontraron clientes</h3>
-          <p className="text-sm text-muted-foreground mb-4">La base de datos devolvió 0 registros.</p>
-          <AddClientDialog />
-        </div>
-      ) : (
-        <ClientsTable clients={formattedClients} />
-      )}
-    </div>
-  )
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-800">Clientes</h1>
+          <p className="text-sm text-slate-500">
+            Total en base de datos: <strong>{formattedClients.length}</strong>
+          </p>
+        </div>
+        {/* Usamos exactamente el nombre de tu componente original */}
+        <AddClientDialog />
+      </div>
+
+      <hr className="border-slate-200" />
+
+      {formattedClients.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border-2 border-dashed border-slate-200">
+          <h3 className="text-lg font-semibold text-slate-700">No se encontraron clientes</h3>
+          <p className="text-sm text-slate-500 mb-4">La base de datos no devolvió registros.</p>
+          <AddClientDialog />
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <ClientsTable clients={formattedClients} />
+        </div>
+      )}
+    </div>
+  )
 }
