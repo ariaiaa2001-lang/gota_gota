@@ -2,126 +2,82 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Plus, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
 export function AddClientDialog() {
   const [open, setOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [address, setAddress] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({ name: '', phone: '', address: '' })
   const router = useRouter()
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
-
+    setLoading(true)
+    const supabase = createClient()
+    
     try {
-      const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
-        toast.error('No se pudo obtener el usuario')
-        return
-      }
+      if (!user) throw new Error("No user")
 
       const { error } = await supabase.from('clients').insert({
         user_id: user.id,
-        name,
-        phone: phone || null,
-        address: address || null,
+        full_name: form.name, // Asegúrate que en Supabase la columna sea full_name
+        phone: form.phone || null,
+        address: form.address || null
       })
 
       if (error) throw error
 
-      toast.success('Cliente agregado exitosamente')
+      toast.success("Cliente creado")
       setOpen(false)
-      setName('')
-      setPhone('')
-      setAddress('')
+      setForm({ name: '', phone: '', address: '' })
       router.refresh()
-    } catch (error) {
-      toast.error('Error al agregar el cliente')
-      console.error(error)
+    } catch (err) {
+      toast.error("Error al guardar")
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo Cliente
-        </Button>
+        <Button><Plus className="mr-2 h-4 w-4" /> Nuevo Cliente</Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Agregar Nuevo Cliente</DialogTitle>
-          <DialogDescription>
-            Ingresa los datos del nuevo cliente
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Nombre Completo *</Label>
-            <Input
-              id="name"
-              placeholder="Juan Perez"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="phone">Telefono</Label>
-            <Input
-              id="phone"
-              type="tel"
-              placeholder="300 123 4567"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="address">Direccion</Label>
-            <Textarea
-              id="address"
-              placeholder="Calle 123 # 45-67, Barrio Centro"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              rows={2}
-            />
-          </div>
-          <div className="flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Agregar Cliente
-            </Button>
-          </div>
-        </form>
+        {/* DIV ÚNICO PARA EVITAR ERROR DE REACT */}
+        <div className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Nuevo Cliente</DialogTitle>
+            <DialogDescription>Completa los datos básicos del cliente.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={save} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nombre Completo</Label>
+              <Input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Teléfono</Label>
+              <Input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Dirección</Label>
+              <Input value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}
+              </Button>
+            </div>
+          </form>
+        </div>
       </DialogContent>
     </Dialog>
   )
