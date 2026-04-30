@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Dialog,
@@ -25,14 +25,14 @@ export function AddClientDialog() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || isLoading) return
     
     setIsLoading(true)
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
 
-      if (!user) throw new Error('Sesión expirada')
+      if (!user) throw new Error('Sesión no válida')
 
       const { error } = await supabase.from('clients').insert({
         user_id: user.id,
@@ -41,12 +41,12 @@ export function AddClientDialog() {
 
       if (error) throw error
 
-      toast.success('Cliente guardado')
+      toast.success('Cliente registrado')
       setName('')
       setOpen(false)
       router.refresh()
     } catch (error: any) {
-      toast.error(error.message)
+      toast.error(error.message || 'Error al guardar')
     } finally {
       setIsLoading(false)
     }
@@ -55,43 +55,44 @@ export function AddClientDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" /> Nuevo Cliente
+        <Button className="font-semibold">
+          <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
         </Button>
       </DialogTrigger>
       
       <DialogContent>
-        {/* ENVOLTORIO ÚNICO OBLIGATORIO */}
-        <div className="flex flex-col gap-4">
+        {/* CONTENEDOR ÚNICO E INDESTRUCTIBLE */}
+        <div className="block w-full">
           <DialogHeader>
-            <DialogTitle>Registro de Cliente</DialogTitle>
+            <DialogTitle>Nuevo Cliente</DialogTitle>
             <DialogDescription>
-              Escribe el nombre completo del nuevo cliente.
+              Introduce el nombre del cliente para el sistema.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="client-name">Nombre</Label>
+          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Nombre Completo</Label>
               <Input
-                id="client-name"
+                id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Nombre y Apellidos"
+                placeholder="Ej: Carlos Pérez"
+                disabled={isLoading}
                 required
               />
             </div>
-
-            <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-3 pt-2">
               <Button 
                 type="button" 
-                variant="ghost" 
+                variant="outline" 
                 onClick={() => setOpen(false)}
+                disabled={isLoading}
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isLoading || !name}>
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirmar'}
+              <Button type="submit" disabled={isLoading || !name.trim()}>
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}
               </Button>
             </div>
           </form>
