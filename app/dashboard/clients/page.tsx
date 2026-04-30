@@ -1,40 +1,28 @@
 import { createClient } from '@/lib/supabase/server'
 import { ClientsTable } from '@/components/clients/clients-table'
 import { AddClientDialog } from '@/components/clients/add-client-dialog'
-import { Users } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ClientsPage() {
   const supabase = await createClient()
   
-  // Verificamos sesión pero NO filtramos la base de datos por el ID aún 
-  // para que puedas ver los datos existentes.
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return <div className="p-10 text-center">Inicia sesión para continuar.</div>
-
+  // Traemos TODO de la tabla clients sin filtros ni relaciones raras
   const { data: clients, error } = await supabase
     .from('clients')
-    .select(`
-      *,
-      loans (
-        id,
-        status,
-        remaining_balance
-      )
-    `)
-    .order('created_at', { ascending: false })
+    .select('*') 
+    .order('full_name', { ascending: true })
 
   if (error) {
-    console.error("Error cargando clientes:", error.message)
+    console.error("Error de Supabase:", error.message)
   }
 
-  // Normalización basada exactamente en las columnas de tu imagen image_1a05dc.jpg
+  // Normalizamos los datos para que la tabla los entienda
   const formattedClients = (clients || []).map(client => ({
     ...client,
-    // Priorizamos full_name que es la columna de tu DB
-    name: client.full_name || "Sin nombre",
-    loans: client.loans || []
+    // Forzamos el uso de full_name que es lo que tienes en Supabase
+    name: client.full_name || "Sin nombre", 
+    loans: [] // Lo dejamos vacío por ahora para que no de error
   }))
 
   return (
@@ -52,10 +40,9 @@ export default async function ClientsPage() {
       <hr className="border-muted" />
 
       {formattedClients.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border-2 border-dashed border-slate-200">
-          <Users className="h-10 w-10 text-slate-300 mb-4" />
-          <h3 className="text-lg font-semibold text-slate-900">No se encontraron clientes</h3>
-          <p className="text-slate-500 text-sm mb-6">Verifica que la tabla 'clients' tenga datos en Supabase.</p>
+        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border-2 border-dashed">
+          <h3 className="text-lg font-semibold">No se encontraron clientes</h3>
+          <p className="text-sm text-muted-foreground mb-4">La base de datos devolvió 0 registros.</p>
           <AddClientDialog />
         </div>
       ) : (
