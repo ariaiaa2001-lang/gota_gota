@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { ClientsTable } from '@/components/clients/clients-table'
 import { AddClientDialog } from '@/components/clients/add-client-dialog'
-import { UserPlus, Users } from 'lucide-react'
+import { Users, AlertCircle } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -21,6 +21,7 @@ export default async function ClientsPage() {
   }
 
   // 2. Consulta a la base de datos
+  // Traemos los clientes. Si loans falla, la consulta de clientes aún funcionará.
   const { data: clients, error: dbError } = await supabase
     .from('clients')
     .select(`
@@ -33,14 +34,11 @@ export default async function ClientsPage() {
     `)
     .order('created_at', { ascending: false })
 
-  if (dbError) {
-    console.error("Error de Supabase:", dbError.message)
-  }
-
-  // 3. Normalización de datos
+  // 3. Normalización de datos con salvavidas
+  // Esto asegura que si la columna se llama full_name o name, funcione igual.
   const formattedClients = (clients || []).map(client => ({
     ...client,
-    name: client.full_name || client.name || "Sin nombre",
+    name: client.full_name || client.name || "Sin nombre registrado",
     loans: client.loans || []
   }))
 
@@ -58,6 +56,14 @@ export default async function ClientsPage() {
 
       <hr className="border-muted" />
 
+      {/* Alerta de error de base de datos (solo visible si algo falla) */}
+      {dbError && (
+        <div className="bg-destructive/10 p-4 rounded-lg flex items-center gap-3 text-destructive">
+          <AlertCircle className="h-5 w-5" />
+          <p className="text-sm font-medium">Error al conectar con la base de datos: {dbError.message}</p>
+        </div>
+      )}
+
       {formattedClients.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border-2 border-dashed border-slate-200">
           <div className="bg-blue-50 p-4 rounded-full mb-4">
@@ -65,7 +71,7 @@ export default async function ClientsPage() {
           </div>
           <h3 className="text-lg font-semibold text-slate-900">No se encontraron clientes</h3>
           <p className="text-slate-500 text-sm max-w-xs text-center mt-1 mb-6">
-            Tu cartera está vacía. Comienza registrando a tu primer cliente para gestionar sus préstamos.
+            Si ya subiste datos, asegúrate de que el RLS esté desactivado o que los registros tengan tu ID de usuario.
           </p>
           <AddClientDialog />
         </div>
