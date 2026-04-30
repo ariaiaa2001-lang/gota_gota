@@ -17,104 +17,93 @@ export function SettingsForm({ settings }: { settings: any }) {
 
   const cleanNum = (val: string) => {
     if (!val) return 0
-    // Elimina símbolos de moneda, puntos de miles y espacios
     return parseFloat(val.replace(/[$. ]/g, "").replace(",", ".")) || 0
   }
 
   const handleSync = async () => {
-    if (!masterAccountsUrl) return toast.error('Configura la URL de publicación primero')
-    if (!masterAccountsUrl.includes('/pub')) {
-        return toast.error('Usa el enlace de "Publicar en la Web" (que termina en output=csv)')
-    }
+    // 1. Limpieza de URL (Elimina cualquier espacio o corchete accidental)
+    const cleanUrl = masterAccountsUrl.replace(/[\[\]]/g, "").trim();
+    if (!cleanUrl) return toast.error('Copia el enlace de publicación de nuevo');
 
     setIsSyncing(true)
-    const toastId = toast.loading('Iniciando sincronización...')
+    const toastId = toast.loading('Sincronizando carteras...')
 
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) throw new Error("No hay sesión de usuario activa")
+      if (!user) throw new Error("Inicia sesión nuevamente")
 
-      // Limpiamos la URL base para asegurar que pedimos CSV
-      const baseUrl = masterAccountsUrl.split('/pub')[0];
-      
-      // GIDs Reales de tu documento:
-      // DATOS CLIENTES: 1769110857
-      // JHONATAN: 1053049930
-      const urlClientes = `${baseUrl}/pub?output=csv&gid=1769110857`
-      const urlJhonatan = `${baseUrl}/pub?output=csv&gid=1053049930`
+      // 2. Guardar la URL limpia en la base de datos primero
+      await supabase.from('settings').upsert({ 
+        user_id: user.id, 
+        master_accounts_url: cleanUrl 
+      });
 
-      // 1. CARGAR DATOS DE CONTACTO (Pestaña: DATOS CLIENTES)
-      const resC = await fetch(urlClientes)
-      const csvC = await resC.text()
-      const contactos: Record<string, any> = {}
+      const baseUrl = cleanUrl.split('/pub')[0];
+      const urlClientes = `${baseUrl}/pub?output=csv&gid=1769110857`; // DATOS CLIENTES
+      const urlJhonatan = `${baseUrl}/pub?output=csv&gid=1053049930`; // JHONATAN
+
+      // 3. PASO A: Importar Clientes (Nombres y Teléfonos)
+      const resC = await fetch(urlClientes);
+      const csvC = await resC.text();
+      const filasC = csvC.split(/\r?\n/).slice(1);
       
-      csvC.split(/\r?\n/).forEach(line => {
-        const c = line.split(',')
-        // Según tu Excel: Columna C (índice 2) es NOMBRE
-        const nombre = c[2]?.replace(/"/g, '').trim()
+      for (const fila of filasC) {
+        const c = fila.split(',');
+        const nombre = c[2]?.replace(/"/g, '').trim(); // Columna C
         if (nombre && nombre !== 'NOMBRE') {
-          contactos[nombre] = { 
-            tel: c[3]?.replace(/"/g, '').trim(), // Columna D: CELULAR
-            dir: c[4]?.replace(/"/g, '').trim(), // Columna E: TRABAJO
-            rec: c[5]?.replace(/"/g, '').trim()  // Columna F: RECOMENDADO
-          }
-        }
-      })
-
-      // 2. CARGAR PRÉSTAMOS (Pestaña: JHONATAN)
-      const resJ = await fetch(urlJhonatan)
-      const csvJ = await resJ.text()
-      const filas = csvJ.split(/\r?\n/)
-      
-      let count = 0
-      // Empezamos en i=2 para saltar encabezados
-      for (let i = 2; i < filas.length; i++) {
-        const c = filas[i].split(',')
-        const nombre = c[0]?.replace(/"/g, '').trim() // En JHONATAN el nombre es Columna A
-
-        if (nombre && nombre.length > 3 && !nombre.toLowerCase().includes('total')) {
-          const info = contactos[nombre] || {}
-          
-          // Upsert Cliente
-          const { data: client, error: clientErr } = await supabase.from('clients').upsert({
+          await supabase.from('clients').upsert({
             full_name: nombre,
-            phone: info.tel || null,
-            address: info.dir || null,
-            recommended_by: info.rec || null,
+            phone: c[3]?.replace(/"/g, '').trim() || null, // Columna D
+            address: c[4]?.replace(/"/g, '').trim() || null, // Columna E
             user_id: user.id
-          }, { onConflict: 'full_name,user_id' }).select().single()
+          }, { onConflict: 'full_name,user_id' });
+        }
+      }
 
-          if (clientErr) {
-            console.error(`Error con cliente ${nombre}:`, clientErr.message)
-            continue
-          }
+      // 4. PASO B: Vincular Préstamos y Saldos (Pestaña JHONATAN)
+      const resJ = await fetch(urlJhonatan);
+      const csvJ = await resJ.text();
+      const filasJ = csvJ.split(/\r?\n/).slice(2);
+      
+      let count = 0;
+      for (const fila of filasJ) {
+        const c = fila.split(',');
+        const nombre = c[0]?.replace(/"/g, '').trim(); // Columna A
+
+        if (nombre && !nombre.toLowerCase().includes('total')) {
+          // Buscamos el ID del cliente que acabamos de crear
+          const { data: client } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('full_name', nombre)
+            .eq('user_id', user.id)
+            .single();
 
           if (client) {
-            const saldo = cleanNum(c[5]) // Columna F: SALDO ACTUAL
+            const saldo = cleanNum(c[5]); // Columna F
             if (saldo > 0) {
-              const { error: loanErr } = await supabase.from('loans').upsert({
+              await supabase.from('loans').upsert({
                 client_id: client.id,
                 user_id: user.id,
-                total_amount: cleanNum(c[2]), // Columna C: VALOR P.
-                quota_amount: cleanNum(c[3]), // Columna D: CUOTA
+                total_amount: cleanNum(c[2]), // Columna C
+                quota_amount: cleanNum(c[3]), // Columna D
                 remaining_balance: saldo,
                 status: 'active'
-              }, { onConflict: 'client_id,status' })
-
-              if (!loanErr) count++
+              }, { onConflict: 'client_id,status' });
+              count++;
             }
           }
         }
       }
 
-      toast.success(`${count} préstamos activos sincronizados`, { id: toastId })
-      router.refresh()
+      toast.success(`${count} préstamos cargados con éxito`, { id: toastId });
+      router.refresh();
     } catch (e: any) {
-      toast.error('Error: ' + e.message, { id: toastId })
+      console.error(e);
+      toast.error('Error de lectura. Verifica que el archivo esté publicado.', { id: toastId });
     } finally {
-      setIsSyncing(false)
+      setIsSyncing(false);
     }
   }
 
@@ -124,7 +113,7 @@ export function SettingsForm({ settings }: { settings: any }) {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle>Configuración de Google Sheets</CardTitle>
-            <Button onClick={handleSync} disabled={isSyncing} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={handleSync} disabled={isSyncing} className="bg-green-600">
               {isSyncing ? <Loader2 className="animate-spin mr-2" /> : <RefreshCw className="mr-2" />}
               Sincronizar Todo
             </Button>
@@ -138,13 +127,6 @@ export function SettingsForm({ settings }: { settings: any }) {
               onChange={(e) => setMasterAccountsUrl(e.target.value)}
               placeholder="https://docs.google.com/spreadsheets/d/e/2PACX.../pub?output=csv"
             />
-          </div>
-          <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-700 flex gap-3 border border-blue-100">
-            <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
-            <p>
-              <strong>Instrucciones:</strong> El sistema leerá la pestaña <strong>DATOS CLIENTES</strong> para contactos 
-              y la pestaña <strong>JHONATAN</strong> para saldos y cuotas.
-            </p>
           </div>
         </CardContent>
       </Card>
