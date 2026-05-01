@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { 
@@ -17,13 +17,11 @@ import {
   CreditCard, 
   History, 
   ArrowLeft,
-  DollarSign,
   Calendar
 } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
-// Obligamos a que la página siempre busque datos frescos
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
@@ -31,31 +29,34 @@ interface PageProps {
 }
 
 export default async function ClientDetailsPage({ params }: PageProps) {
-  // 1. Esperamos los parámetros y el cliente de Supabase
   const { id } = await params
   const supabase = await createClient()
 
-  const { data: client, error } = await supabase
+  // 1. Verificación de usuario
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  // 2. Consulta de Cliente
+  const { data: client, error: clientError } = await supabase
     .from('clients')
-    .select(`
-      *,
-      loans (
-        *,
-        payments (*)
-      )
-    `)
+    .select('*')
     .eq('id', id)
     .single()
 
-  // Si hay error o el ID no existe en la base de datos
-  if (error || !client) {
-    console.error("Cliente no encontrado:", id)
+  if (clientError || !client) {
+    console.error("Error cargando cliente:", clientError)
     notFound()
   }
 
-  // 2. Normalización de datos para evitar errores visuales
-  const displayName = client.full_name || client.name || "Cliente sin nombre"
-  
+  // 3. Consulta de Préstamos (Buscando por client_id)
+  // Incluimos los pagos mediante la relación interna
+  const { data: loans, error: loansError } = await supabase
+    .from('loans')
+    .select('*, payments(*)')
+    .eq('client_id', id)
+    .order('created_at', { ascending: false })
+
+  // Helpers de formato
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('es-CO', { 
       style: 'currency', 
@@ -66,48 +67,49 @@ export default async function ClientDetailsPage({ params }: PageProps) {
   const formatDate = (date: string) => {
     if (!date) return '---'
     return new Date(date).toLocaleDateString('es-CO', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
+      day: 'numeric', month: 'short', year: 'numeric'
     })
   }
 
-  // Calculamos deuda total activa
-  const totalActiveDebt = client.loans?.reduce((acc: number, loan: any) => {
-    return loan.status === 'active' ? acc + (loan.remaining_balance || 0) : acc
+  // Calculamos la deuda sumando el campo exacto de tu DB: remaining_balance
+  const totalActiveDebt = loans?.reduce((acc: number, loan: any) => {
+    return loan.status === 'active' ? acc + (Number(loan.remaining_balance) || 0) : acc
   }, 0) || 0
 
   return (
     <div className="p-6 space-y-6">
-      {/* Botón Volver */}
       <Button variant="outline" size="sm" asChild>
         <Link href="/dashboard/clients" className="flex items-center gap-2">
           <ArrowLeft className="h-4 w-4" /> Volver a Clientes
         </Link>
       </Button>
 
-      {/* Encabezado Principal */}
+      {/* CABECERA: Perfil del Cliente */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-white p-6 rounded-xl border shadow-sm">
         <div className="flex items-center gap-4">
           <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
             <User className="h-8 w-8" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{displayName}</h1>
-            <p className="text-xs font-mono text-muted-foreground">{client.id}</p>
+            <h1 className="text-2xl font-bold text-slate-900 uppercase">
+              {client.full_name || 'Sin Nombre'}
+            </h1>
+            <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+              ID: {client.id}
+            </p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase">Deuda Total</p>
-          <p className="text-2xl font-black text-red-600">{formatCurrency(totalActiveDebt)}</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase">Deuda Total Pendiente</p>
+          <p className="text-3xl font-black text-red-600">{formatCurrency(totalActiveDebt)}</p>
         </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Información de Contacto */}
+        {/* CARD: Datos de contacto */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Datos de Contacto</CardTitle>
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Contacto</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
@@ -116,82 +118,99 @@ export default async function ClientDetailsPage({ params }: PageProps) {
             </div>
             <div className="flex items-center gap-3">
               <MapPin className="h-4 w-4 text-red-500" />
-              <span className="text-sm">{client.address || 'Sin dirección'}</span>
+              <span className="text-sm uppercase font-medium">{client.address || 'Sin dirección'}</span>
             </div>
-            <div className="flex items-center gap-3">
-              <Calendar className="h-4 w-4 text-slate-500" />
-              <span className="text-sm text-muted-foreground">Desde: {formatDate(client.created_at)}</span>
+            <div className="flex items-center gap-3 pt-2 border-t">
+              <Calendar className="h-4 w-4 text-slate-400" />
+              <span className="text-[10px] text-muted-foreground">Registro: {formatDate(client.created_at)}</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Resumen de Préstamos */}
+        {/* CARD: Historial de Créditos */}
         <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <CreditCard className="h-4 w-4" /> Historial de Créditos
+          <CardHeader className="border-b bg-slate-50/30">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <CreditCard className="h-4 w-4" /> Préstamos Registrados
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Monto</TableHead>
-                  <TableHead>Saldo</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-[10px] uppercase">F. Inicio</TableHead>
+                  <TableHead className="text-[10px] uppercase">Monto Total</TableHead>
+                  <TableHead className="text-[10px] uppercase">Saldo Actual</TableHead>
+                  <TableHead className="text-[10px] uppercase">Estado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {client.loans?.map((loan: any) => (
-                  <TableRow key={loan.id}>
-                    <TableCell className="text-xs">{formatDate(loan.start_date)}</TableCell>
-                    <TableCell className="font-medium">{formatCurrency(loan.total_amount)}</TableCell>
-                    <TableCell className="font-bold text-red-600">{formatCurrency(loan.remaining_balance)}</TableCell>
-                    <TableCell>
-                      <Badge variant={loan.status === 'active' ? 'default' : 'secondary'}>
-                        {loan.status}
-                      </Badge>
+                {loans && loans.length > 0 ? (
+                  loans.map((loan: any) => (
+                    <TableRow key={loan.id} className="hover:bg-slate-50/50 transition-colors">
+                      <TableCell className="text-[11px] font-medium">{formatDate(loan.created_at)}</TableCell>
+                      <TableCell className="text-sm">{formatCurrency(loan.total_amount)}</TableCell>
+                      <TableCell className="text-sm font-extrabold text-red-600">
+                        {formatCurrency(loan.remaining_balance)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={loan.status === 'active' ? 'default' : 'secondary'} 
+                          className="text-[10px] uppercase font-bold px-2 py-0"
+                        >
+                          {loan.status === 'active' ? 'Vigente' : 'Pagado'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground italic text-xs">
+                      No se encontraron préstamos para este cliente.
                     </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
       </div>
 
-      {/* Historial de todos los pagos */}
+      {/* CARD: Historial General de Abonos */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <History className="h-4 w-4" /> Registro General de Abonos
+        <CardHeader className="border-b bg-slate-50/30">
+          <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <History className="h-4 w-4" /> Últimos Pagos / Abonos
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow className="bg-slate-50">
-                <TableHead>Fecha Abono</TableHead>
-                <TableHead>Monto Recibido</TableHead>
-                <TableHead>Comprobante/Notas</TableHead>
+              <TableRow className="bg-slate-50/50">
+                <TableHead className="text-[10px] uppercase">Fecha de Pago</TableHead>
+                <TableHead className="text-[10px] uppercase">Valor Recibido</TableHead>
+                <TableHead className="text-[10px] uppercase">Observaciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {client.loans?.flatMap((l: any) => l.payments || []).length === 0 ? (
+              {loans?.flatMap((l: any) => l.payments || []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center py-8 text-muted-foreground italic">
-                    No hay abonos registrados para este cliente.
+                  <TableCell colSpan={3} className="h-24 text-center text-muted-foreground italic text-xs">
+                    El cliente no ha realizado abonos todavía.
                   </TableCell>
                 </TableRow>
               ) : (
-                client.loans?.flatMap((l: any) => l.payments || [])
-                  .sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
+                loans?.flatMap((l: any) => l.payments || [])
+                  .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                   .map((p: any) => (
-                    <TableRow key={p.id}>
-                      <TableCell className="text-sm">{formatDate(p.payment_date)}</TableCell>
-                      <TableCell className="font-black text-emerald-600">{formatCurrency(p.amount)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{p.notes || '---'}</TableCell>
+                    <TableRow key={p.id} className="hover:bg-emerald-50/30 transition-colors">
+                      <TableCell className="text-xs font-medium">{formatDate(p.created_at)}</TableCell>
+                      <TableCell className="text-sm font-black text-emerald-600">
+                        {formatCurrency(p.amount)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground italic">
+                        {p.notes || 'Abono realizado'}
+                      </TableCell>
                     </TableRow>
                   ))
               )}
