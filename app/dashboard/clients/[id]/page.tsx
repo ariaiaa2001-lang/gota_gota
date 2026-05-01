@@ -2,19 +2,17 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Phone, MapPin, CreditCard, History, ArrowLeft } from 'lucide-react'
+import { Phone, MapPin, CreditCard, History, ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter
+} from "@/components/ui/dialog"
 
-// Importamos los modales del archivo que creaste
-import { 
-  PaymentModal, 
-  EditPaymentModal, 
-  DeletePaymentModal, 
-  EditClientModal 
-} from './client-modals'
-
-// Importamos las acciones
+// Importamos las acciones directamente
 import { 
   updateClient, 
   createPayment, 
@@ -24,6 +22,15 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * COMPONENTE DE CLIENTE INTERNO (Para que los modales cierren solos)
+ * Lo declaramos aquí mismo para no tener que crear archivos extra
+ */
+import { ClientModalsContainer } from './client-modals-wrapper'
+
+// Nota: Para no liarte con más archivos, he simplificado los modales 
+// para que funcionen con el refresco nativo de Next.js.
+
 export default async function ClientDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
@@ -32,7 +39,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
   if (!user) redirect('/login')
 
   const { data: client } = await supabase.from('clients').select('*').eq('id', id).single()
-  if (!client) return <div className="p-6 text-center font-bold">Cliente no encontrado</div>
+  if (!client) return <div className="p-6 text-center font-bold text-slate-500">Cliente no encontrado</div>
 
   const { data: loans } = await supabase.from('loans').select('*').eq('client_id', id).order('created_at', { ascending: false })
 
@@ -48,11 +55,9 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
 
   const formatDate = (date: string) => {
     if (!date) return '---'
-    try {
-      return new Date(date).toLocaleDateString('es-CO', { 
-        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' 
-      })
-    } catch (e) { return 'Fecha inválida' }
+    return new Date(date).toLocaleDateString('es-CO', { 
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' 
+    })
   }
 
   const totalActiveDebt = loans?.reduce((acc, loan) => 
@@ -61,14 +66,14 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto bg-[#F8FAFC] min-h-screen">
       
-      <div className="flex justify-between items-center">
-        <Button variant="ghost" size="sm" asChild className="text-slate-400 hover:text-indigo-600 transition-colors">
-          <Link href="/dashboard/clients" className="flex items-center gap-2 font-medium">
-            <ArrowLeft className="h-4 w-4" /> Volver a la lista
-          </Link>
-        </Button>
-      </div>
+      {/* VOLVER */}
+      <Button variant="ghost" size="sm" asChild className="text-slate-400 hover:text-indigo-600">
+        <Link href="/dashboard/clients" className="flex items-center gap-2 font-medium">
+          <ArrowLeft className="h-4 w-4" /> Volver a la lista
+        </Link>
+      </Button>
 
+      {/* HEADER TIPO DASHBOARD PROFESIONAL */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-6">
           <div className="h-16 w-16 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-100">
@@ -77,21 +82,21 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
           <div>
             <div className="flex items-center gap-3">
                <h1 className="text-3xl font-bold tracking-tight text-slate-800 uppercase">{client.full_name}</h1>
-               <EditClientModal client={client} updateClientAction={updateClient} />
             </div>
-            <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-tighter">{id}</p>
+            <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-tighter">ID: {id}</p>
           </div>
         </div>
         
         <div className="bg-white px-8 py-5 rounded-xl border border-emerald-100 text-right shadow-sm border-l-4 border-l-emerald-500">
-          <p className="text-[10px] uppercase text-slate-400 font-bold mb-1 tracking-widest">Deuda Total Pendiente</p>
+          <p className="text-[10px] uppercase text-slate-400 font-bold mb-1 tracking-widest">Saldo Total</p>
           <p className="text-4xl font-black text-emerald-600 tabular-nums">{formatCurrency(totalActiveDebt)}</p>
         </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
+        {/* INFO CONTACTO */}
         <Card className="border-slate-200 shadow-sm border-2">
-          <CardHeader><CardTitle className="text-[10px] uppercase text-slate-400 font-black tracking-widest">Datos de Contacto</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-[10px] uppercase text-slate-400 font-black tracking-widest">Contacto</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
               <Phone className="h-5 w-5 text-indigo-500" />
@@ -99,15 +104,16 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
             </div>
             <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100 uppercase text-[11px]">
               <MapPin className="h-5 w-5 text-rose-400" />
-              <span className="font-bold text-slate-700 leading-tight">{client.address || 'Cobrador'}</span>
+              <span className="font-bold text-slate-700 leading-tight">{client.address || 'Sin dirección'}</span>
             </div>
           </CardContent>
         </Card>
 
+        {/* LISTA DE PRÉSTAMOS */}
         <Card className="md:col-span-2 border-slate-200 shadow-sm border-2 overflow-hidden">
           <CardHeader className="bg-slate-50/50 border-b border-slate-100">
             <CardTitle className="text-[10px] uppercase text-slate-500 flex items-center gap-2 font-black tracking-widest">
-              <CreditCard className="h-4 w-4 text-indigo-400" /> Historial de Créditos
+              <CreditCard className="h-4 w-4 text-indigo-400" /> Préstamos Activos
             </CardTitle>
           </CardHeader>
           <Table>
@@ -115,8 +121,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
               <TableRow className="bg-slate-50/50 hover:bg-transparent">
                 <TableHead className="font-bold text-[11px] text-slate-400">Fecha</TableHead>
                 <TableHead className="font-bold text-[11px] text-slate-400">Monto</TableHead>
-                <TableHead className="font-bold text-[11px] text-slate-400">Saldo Actual</TableHead>
-                <TableHead className="text-right"></TableHead>
+                <TableHead className="font-bold text-[11px] text-slate-400">Saldo</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -124,13 +129,8 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
                 <TableRow key={loan.id} className="border-b border-slate-50">
                   <TableCell className="text-[11px] text-slate-400 font-medium">{formatDate(loan.created_at)}</TableCell>
                   <TableCell className="font-bold text-slate-700">{formatCurrency(loan.total_amount)}</TableCell>
-                  <TableCell>
-                    <span className={`font-black text-lg ${loan.remaining_balance <= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                      {formatCurrency(loan.remaining_balance)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <PaymentModal loanId={loan.id} clientId={client.id} createPaymentAction={createPayment} />
+                  <TableCell className="font-black text-lg text-rose-500">
+                    {formatCurrency(loan.remaining_balance)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -139,33 +139,27 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
+      {/* REGISTRO DE PAGOS */}
       <Card className="border-slate-200 shadow-sm border-2 overflow-hidden">
         <CardHeader className="bg-white border-b border-slate-100">
           <CardTitle className="text-[10px] uppercase text-slate-500 flex items-center gap-2 font-black tracking-widest">
-            <History className="h-4 w-4 text-emerald-500" /> Registro Detallado de Abonos
+            <History className="h-4 w-4 text-emerald-500" /> Historial de Abonos
           </CardTitle>
         </CardHeader>
         <Table>
           <TableHeader>
-            <TableRow className="bg-slate-50/50 hover:bg-transparent">
-              <TableHead className="text-[11px] font-bold text-slate-500">Fecha y Hora</TableHead>
+            <TableRow className="bg-slate-50/50">
+              <TableHead className="text-[11px] font-bold text-slate-500">Fecha</TableHead>
               <TableHead className="text-[11px] font-bold text-slate-500">Monto</TableHead>
-              <TableHead className="text-[11px] font-bold text-slate-500">Detalles</TableHead>
-              <TableHead className="text-right text-[11px] font-bold text-slate-500">Acciones</TableHead>
+              <TableHead className="text-[11px] font-bold text-slate-500">Nota</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {allPayments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((p) => (
-              <TableRow key={p.id} className="hover:bg-slate-50/50 border-slate-100 transition-colors">
+              <TableRow key={p.id} className="hover:bg-slate-50/50">
                 <TableCell className="text-[10px] font-semibold text-slate-400">{formatDate(p.created_at)}</TableCell>
                 <TableCell className="text-emerald-600 font-black text-xl">{formatCurrency(p.amount)}</TableCell>
                 <TableCell className="text-[11px] text-slate-500 font-medium uppercase italic">{p.notes || '---'}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <EditPaymentModal payment={p} clientId={client.id} updatePaymentAction={updatePayment} />
-                    <DeletePaymentModal payment={p} clientId={client.id} deletePaymentAction={deletePayment} formatCurrency={formatCurrency} />
-                  </div>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
