@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-// EDITAR DATOS DEL CLIENTE
+// ACTUALIZAR DATOS DEL CLIENTE
 export async function updateClient(id: string, formData: FormData) {
   const supabase = await createClient()
   const data = {
@@ -16,7 +16,7 @@ export async function updateClient(id: string, formData: FormData) {
   revalidatePath(`/dashboard/clients/${id}`)
 }
 
-// CREAR UN NUEVO ABONO
+// CREAR NUEVO ABONO
 export async function createPayment(loanId: string, clientId: string, formData: FormData) {
   const supabase = await createClient()
   const data = {
@@ -30,7 +30,7 @@ export async function createPayment(loanId: string, clientId: string, formData: 
   revalidatePath(`/dashboard/clients/${clientId}`)
 }
 
-// EDITAR UN ABONO (CORRECCIÓN)
+// EDITAR ABONO EXISTENTE
 export async function updatePayment(paymentId: string, clientId: string, formData: FormData) {
   const supabase = await createClient()
   const data = {
@@ -43,7 +43,7 @@ export async function updatePayment(paymentId: string, clientId: string, formDat
   revalidatePath(`/dashboard/clients/${clientId}`)
 }
 
-// ELIMINAR UN ABONO
+// ELIMINAR ABONO
 export async function deletePayment(paymentId: string, clientId: string) {
   const supabase = await createClient()
   const { error } = await supabase.from('payments').delete().eq('id', paymentId)
