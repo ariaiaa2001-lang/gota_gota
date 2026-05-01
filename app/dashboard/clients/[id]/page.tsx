@@ -2,34 +2,25 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Phone, MapPin, CreditCard, History, ArrowLeft, Pencil, Trash2 } from 'lucide-react'
+import { Phone, MapPin, CreditCard, History, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+// IMPORTANTE: Estos son los componentes que acabas de crear en el otro archivo
+import { 
+  PaymentModal, 
+  EditPaymentModal, 
+  DeletePaymentModal, 
+  EditClientModal 
+} from './client-modals'
 
-// Importamos las acciones
-import { updateClient, createPayment, updatePayment, deletePayment } from '@/lib/actions/client-actions'
-
-// ESTE ES EL COMPONENTE DE CLIENTE INTERNO PARA MANEJAR EL CIERRE
-// Se declara aquí mismo para que no tengas que crear archivos extra
-import { PaymentModal, EditPaymentModal, DeletePaymentModal, EditClientModal } from './client-modals'
-
-/* 
-  NOTA: Para que el cierre automático funcione de verdad sin separar archivos, 
-  necesitamos que el Dialog sea controlado. He preparado los componentes 
-  abajo para que los uses directamente.
-*/
+// Importamos las acciones del servidor
+import { 
+  updateClient, 
+  createPayment, 
+  updatePayment, 
+  deletePayment 
+} from '@/lib/actions/client-actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +43,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
     allPayments = payments || []
   }
 
+  // Utilidades de formato
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val || 0)
 
@@ -86,13 +78,14 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
           <div>
             <div className="flex items-center gap-3">
                <h1 className="text-3xl font-bold tracking-tight text-slate-800 uppercase">{client.full_name}</h1>
-               {/* MODAL EDITAR CLIENTE (CON CIERRE AUTO) */}
+               {/* Modal de edición de cliente que se cierra solo */}
                <EditClientModal client={client} updateClientAction={updateClient} />
             </div>
             <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-tighter">{id}</p>
           </div>
         </div>
         
+        {/* BANNER DEUDA */}
         <div className="bg-white px-8 py-5 rounded-xl border border-emerald-100 text-right shadow-sm border-l-4 border-l-emerald-500">
           <p className="text-[10px] uppercase text-slate-400 font-bold mb-1 tracking-widest">Deuda Total Pendiente</p>
           <p className="text-4xl font-black text-emerald-600 tabular-nums">{formatCurrency(totalActiveDebt)}</p>
@@ -100,7 +93,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* CONTACTO */}
+        {/* CARD IZQUIERDA: CONTACTO */}
         <Card className="border-slate-200 shadow-sm border-2">
           <CardHeader><CardTitle className="text-[10px] uppercase text-slate-400 font-black tracking-widest">Datos de Contacto</CardTitle></CardHeader>
           <CardContent className="space-y-3">
@@ -115,7 +108,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
           </CardContent>
         </Card>
 
-        {/* CREDITOS */}
+        {/* CARD DERECHA: PRÉSTAMOS */}
         <Card className="md:col-span-2 border-slate-200 shadow-sm border-2 overflow-hidden">
           <CardHeader className="bg-slate-50/50 border-b border-slate-100">
             <CardTitle className="text-[10px] uppercase text-slate-500 flex items-center gap-2 font-black tracking-widest">
@@ -142,7 +135,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    {/* MODAL ABONAR (CON CIERRE AUTO) */}
+                    {/* Componente de abono que se cierra solo */}
                     <PaymentModal loanId={loan.id} clientId={client.id} createPaymentAction={createPayment} />
                   </TableCell>
                 </TableRow>
@@ -152,7 +145,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
-      {/* HISTORIAL ABONOS */}
+      {/* REGISTRO DE ABONOS */}
       <Card className="border-slate-200 shadow-sm border-2 overflow-hidden">
         <CardHeader className="bg-white border-b border-slate-100">
           <CardTitle className="text-[10px] uppercase text-slate-500 flex items-center gap-2 font-black tracking-widest">
@@ -182,9 +175,19 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    {/* MODALES DE ACCION (CON CIERRE AUTO) */}
-                    <EditPaymentModal payment={p} clientId={client.id} updatePaymentAction={updatePayment} />
-                    <DeletePaymentModal payment={p} clientId={client.id} deletePaymentAction={deletePayment} formatCurrency={formatCurrency} />
+                    {/* Editar Abono (Azul) */}
+                    <EditPaymentModal 
+                      payment={p} 
+                      clientId={client.id} 
+                      updatePaymentAction={updatePayment} 
+                    />
+                    {/* Eliminar Abono (Rojo) */}
+                    <DeletePaymentModal 
+                      payment={p} 
+                      clientId={client.id} 
+                      deletePaymentAction={deletePayment} 
+                      formatCurrency={formatCurrency} 
+                    />
                   </div>
                 </TableCell>
               </TableRow>
@@ -195,10 +198,3 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
     </div>
   )
 }
-
-// ==========================================================
-// COMPONENTES DE CLIENTE (Pon estos en un archivo separado llamado client-modals.tsx)
-// O si prefieres, mantén la importación como hice arriba. 
-// Para que esta página funcione, CREA UN ARCHIVO al lado de este llamado client-modals.tsx 
-// con el código que te daré a continuación.
-// ==========================================================
