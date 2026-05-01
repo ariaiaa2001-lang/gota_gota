@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { notFound, redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -9,12 +9,21 @@ import { Button } from '@/components/ui/button'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ClientDetailsPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default async function ClientDetailsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  // ⚠️ IMPORTANTE (tu caso)
+  const { id } = await params
+
   const supabase = await createClient()
 
   // 🔐 Verificar sesión
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   if (!user) redirect('/login')
 
   // 👤 Obtener cliente
@@ -24,9 +33,12 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
     .eq('id', id)
     .single()
 
-  if (clientError || !client) {
-    console.error(clientError)
-    notFound()
+  if (clientError) {
+    console.error('Error cliente:', clientError)
+  }
+
+  if (!client) {
+    return <div className="p-6">❌ Cliente no encontrado</div>
   }
 
   // 💰 Obtener préstamos (CORREGIDO)
@@ -36,14 +48,14 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
     .eq('client_id', id)
 
   if (loansError) {
-    console.error(loansError)
+    console.error('Error loans:', loansError)
   }
 
   // 💳 Obtener pagos
   let allPayments: any[] = []
 
   if (loans && loans.length > 0) {
-    const loanIds = loans.map(l => l.id)
+    const loanIds = loans.map((l) => l.id)
 
     const { data: payments, error: paymentsError } = await supabase
       .from('payments')
@@ -51,7 +63,7 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
       .in('loan_id', loanIds)
 
     if (paymentsError) {
-      console.error(paymentsError)
+      console.error('Error payments:', paymentsError)
     }
 
     allPayments = payments || []
@@ -62,7 +74,7 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
     new Intl.NumberFormat('es-CO', {
       style: 'currency',
       currency: 'COP',
-      maximumFractionDigits: 0
+      maximumFractionDigits: 0,
     }).format(val || 0)
 
   // 📅 Formato fecha
@@ -71,17 +83,19 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
     return new Date(date).toLocaleDateString('es-CO', {
       day: 'numeric',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
     })
   }
 
   // 📊 Total deuda activa
   const totalActiveDebt =
-    loans?.reduce((acc, loan) =>
-      loan.status === 'active'
-        ? acc + (Number(loan.remaining_balance) || 0)
-        : acc
-    , 0) || 0
+    loans?.reduce(
+      (acc, loan) =>
+        loan.status === 'active'
+          ? acc + (Number(loan.remaining_balance) || 0)
+          : acc,
+      0
+    ) || 0
 
   return (
     <div className="p-6 space-y-6">
@@ -99,8 +113,12 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
             {client.full_name?.charAt(0)}
           </div>
           <div>
-            <h1 className="text-3xl font-black uppercase">{client.full_name}</h1>
-            <Badge variant="outline" className="text-[10px]">{id}</Badge>
+            <h1 className="text-3xl font-black uppercase">
+              {client.full_name}
+            </h1>
+            <Badge variant="outline" className="text-[10px]">
+              {id}
+            </Badge>
           </div>
         </div>
 
@@ -114,7 +132,6 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
 
       {/* INFO + PRÉSTAMOS */}
       <div className="grid gap-6 md:grid-cols-3">
-
         {/* CONTACTO */}
         <Card>
           <CardHeader>
@@ -157,18 +174,33 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
                 loans.map((loan) => (
                   <TableRow key={loan.id}>
                     <TableCell>{formatDate(loan.created_at)}</TableCell>
-                    <TableCell>{formatCurrency(loan.total_amount)}</TableCell>
-                    <TableCell>{formatCurrency(loan.remaining_balance)}</TableCell>
+                    <TableCell>
+                      {formatCurrency(loan.total_amount)}
+                    </TableCell>
+                    <TableCell>
+                      {formatCurrency(loan.remaining_balance)}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <Badge className={loan.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}>
-                        {loan.status === 'active' ? 'Vigente' : 'Pagado'}
+                      <Badge
+                        className={
+                          loan.status === 'active'
+                            ? 'bg-green-500'
+                            : 'bg-gray-400'
+                        }
+                      >
+                        {loan.status === 'active'
+                          ? 'Vigente'
+                          : 'Pagado'}
                       </Badge>
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-gray-400">
+                  <TableCell
+                    colSpan={4}
+                    className="text-center text-gray-400"
+                  >
                     Sin préstamos
                   </TableCell>
                 </TableRow>
@@ -199,19 +231,30 @@ export default async function ClientDetailsPage({ params }: { params: { id: stri
           <TableBody>
             {allPayments.length > 0 ? (
               allPayments
-                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .sort(
+                  (a, b) =>
+                    new Date(b.created_at).getTime() -
+                    new Date(a.created_at).getTime()
+                )
                 .map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell>{formatDate(p.created_at)}</TableCell>
+                    <TableCell>
+                      {formatDate(p.created_at)}
+                    </TableCell>
                     <TableCell className="text-green-600 font-bold">
                       {formatCurrency(p.amount)}
                     </TableCell>
-                    <TableCell>{p.notes || 'Pago de cuota'}</TableCell>
+                    <TableCell>
+                      {p.notes || 'Pago de cuota'}
+                    </TableCell>
                   </TableRow>
                 ))
             ) : (
               <TableRow>
-                <TableCell colSpan={3} className="text-center text-gray-400">
+                <TableCell
+                  colSpan={3}
+                  className="text-center text-gray-400"
+                >
                   Sin pagos registrados
                 </TableCell>
               </TableRow>
