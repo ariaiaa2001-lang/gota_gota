@@ -1,47 +1,39 @@
 import { createClient } from '@/lib/supabase/server'
 import { ClientsTable } from '@/components/clients/clients-table'
 import { AddClientDialog } from '@/components/clients/add-client-dialog'
+import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 export default async function ClientsPage() {
   const supabase = await createClient()
-  
-  // 1. Obtenemos los clientes
-  const { data: clients, error: clientsError } = await supabase
-    .from('clients')
-    .select('*')
-    .order('full_name', { ascending: true })
+  const { data: { user } } = await supabase.auth.getUser()
 
-  // 2. Obtenemos los préstamos (usamos la misma lógica que el dashboard)
-  // IMPORTANTE: Traemos 'client_id' para poder mapearlos
-  const { data: loans, error: loansError } = await supabase
-    .from('loans')
-    .select(`
-      *,
-      payments (
-        amount
-      )
-    `)
-    .eq('status', 'active')
+  if (!user) redirect('/login')
 
-  if (clientsError || loansError) {
-    console.error("Error cargando datos:", clientsError || loansError)
-  }
+  // 1. Traemos clientes y préstamos del usuario (Igual que en el dashboard)
+  const [
+    { data: clients },
+    { data: loans }
+  ] = await Promise.all([
+    supabase
+      .from('clients')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('full_name', { ascending: true }),
+    supabase
+      .from('loans')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+  ])
 
-  // 3. Procesamos los datos para calcular saldos reales
+  // 2. Mapeamos usando la columna 'remaining_balance' que ya existe en tu DB
   const formattedClients = (clients || []).map(client => {
-    // Buscamos los préstamos de este cliente
-    const clientLoans = (loans || []).filter(l => l.client_id === client.id)
+    const clientLoans = loans?.filter(l => l.client_id === client.id) || []
     
-    // Calculamos el saldo pendiente real: (Suma de total_amount) - (Suma de payments)
-    const totalPending = clientLoans.reduce((acc, loan) => {
-      const loanTotal = Number(loan.total_amount) || 0
-      const paid = loan.payments?.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0) || 0
-      const balance = loanTotal - paid
-      return acc + (balance > 0 ? balance : 0)
-    }, 0)
+    // Usamos 'remaining_balance' tal cual lo hace tu dashboard
+    const totalPending = clientLoans.reduce((sum, loan) => sum + Number(loan.remaining_balance), 0)
 
     return {
       ...client,
@@ -54,15 +46,15 @@ export default async function ClientsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">Clientes</h1>
-          <p className="text-sm text-slate-500">
-            Total registrados: <span className="font-semibold text-slate-700">{formattedClients.length}</span>
+          <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
+          <p className="text-muted-foreground text-sm">
+            Total en base de datos: {formattedClients.length}
           </p>
         </div>
         <AddClientDialog />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border shadow-sm">
         <ClientsTable clients={formattedClients} />
       </div>
     </div>
