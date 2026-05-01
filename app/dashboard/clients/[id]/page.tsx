@@ -6,7 +6,7 @@ import { Phone, MapPin, CreditCard, History, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
-// IMPORTANTE: Estos son los componentes que acabas de crear en el otro archivo
+// Importamos los modales del archivo que creaste
 import { 
   PaymentModal, 
   EditPaymentModal, 
@@ -14,7 +14,7 @@ import {
   EditClientModal 
 } from './client-modals'
 
-// Importamos las acciones del servidor
+// Importamos las acciones
 import { 
   updateClient, 
   createPayment, 
@@ -43,15 +43,16 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
     allPayments = payments || []
   }
 
-  // Utilidades de formato
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(val || 0)
 
   const formatDate = (date: string) => {
     if (!date) return '---'
-    return new Date(date).toLocaleDateString('es-CO', { 
-      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' 
-    })
+    try {
+      return new Date(date).toLocaleDateString('es-CO', { 
+        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' 
+      })
+    } catch (e) { return 'Fecha inválida' }
   }
 
   const totalActiveDebt = loans?.reduce((acc, loan) => 
@@ -60,7 +61,6 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto bg-[#F8FAFC] min-h-screen">
       
-      {/* NAVEGACIÓN */}
       <div className="flex justify-between items-center">
         <Button variant="ghost" size="sm" asChild className="text-slate-400 hover:text-indigo-600 transition-colors">
           <Link href="/dashboard/clients" className="flex items-center gap-2 font-medium">
@@ -69,7 +69,6 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
         </Button>
       </div>
 
-      {/* HEADER PRINCIPAL */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-6">
           <div className="h-16 w-16 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-100">
@@ -78,14 +77,12 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
           <div>
             <div className="flex items-center gap-3">
                <h1 className="text-3xl font-bold tracking-tight text-slate-800 uppercase">{client.full_name}</h1>
-               {/* Modal de edición de cliente que se cierra solo */}
                <EditClientModal client={client} updateClientAction={updateClient} />
             </div>
             <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-tighter">{id}</p>
           </div>
         </div>
         
-        {/* BANNER DEUDA */}
         <div className="bg-white px-8 py-5 rounded-xl border border-emerald-100 text-right shadow-sm border-l-4 border-l-emerald-500">
           <p className="text-[10px] uppercase text-slate-400 font-bold mb-1 tracking-widest">Deuda Total Pendiente</p>
           <p className="text-4xl font-black text-emerald-600 tabular-nums">{formatCurrency(totalActiveDebt)}</p>
@@ -93,7 +90,6 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* CARD IZQUIERDA: CONTACTO */}
         <Card className="border-slate-200 shadow-sm border-2">
           <CardHeader><CardTitle className="text-[10px] uppercase text-slate-400 font-black tracking-widest">Datos de Contacto</CardTitle></CardHeader>
           <CardContent className="space-y-3">
@@ -108,7 +104,6 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
           </CardContent>
         </Card>
 
-        {/* CARD DERECHA: PRÉSTAMOS */}
         <Card className="md:col-span-2 border-slate-200 shadow-sm border-2 overflow-hidden">
           <CardHeader className="bg-slate-50/50 border-b border-slate-100">
             <CardTitle className="text-[10px] uppercase text-slate-500 flex items-center gap-2 font-black tracking-widest">
@@ -135,7 +130,6 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    {/* Componente de abono que se cierra solo */}
                     <PaymentModal loanId={loan.id} clientId={client.id} createPaymentAction={createPayment} />
                   </TableCell>
                 </TableRow>
@@ -145,7 +139,6 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
-      {/* REGISTRO DE ABONOS */}
       <Card className="border-slate-200 shadow-sm border-2 overflow-hidden">
         <CardHeader className="bg-white border-b border-slate-100">
           <CardTitle className="text-[10px] uppercase text-slate-500 flex items-center gap-2 font-black tracking-widest">
@@ -164,30 +157,13 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
           <TableBody>
             {allPayments.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((p) => (
               <TableRow key={p.id} className="hover:bg-slate-50/50 border-slate-100 transition-colors">
-                <TableCell className="text-[10px] font-semibold text-slate-400">
-                  {formatDate(p.created_at)}
-                </TableCell>
-                <TableCell className="text-emerald-600 font-black text-xl">
-                  {formatCurrency(p.amount)}
-                </TableCell>
-                <TableCell className="text-[11px] text-slate-500 font-medium uppercase italic">
-                  {p.notes || '---'}
-                </TableCell>
+                <TableCell className="text-[10px] font-semibold text-slate-400">{formatDate(p.created_at)}</TableCell>
+                <TableCell className="text-emerald-600 font-black text-xl">{formatCurrency(p.amount)}</TableCell>
+                <TableCell className="text-[11px] text-slate-500 font-medium uppercase italic">{p.notes || '---'}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    {/* Editar Abono (Azul) */}
-                    <EditPaymentModal 
-                      payment={p} 
-                      clientId={client.id} 
-                      updatePaymentAction={updatePayment} 
-                    />
-                    {/* Eliminar Abono (Rojo) */}
-                    <DeletePaymentModal 
-                      payment={p} 
-                      clientId={client.id} 
-                      deletePaymentAction={deletePayment} 
-                      formatCurrency={formatCurrency} 
-                    />
+                    <EditPaymentModal payment={p} clientId={client.id} updatePaymentAction={updatePayment} />
+                    <DeletePaymentModal payment={p} clientId={client.id} deletePaymentAction={deletePayment} formatCurrency={formatCurrency} />
                   </div>
                 </TableCell>
               </TableRow>
