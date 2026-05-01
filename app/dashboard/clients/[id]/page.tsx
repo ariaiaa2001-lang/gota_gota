@@ -21,7 +21,6 @@ import {
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
-// Forzamos renderizado dinámico para ver cambios en tiempo real
 export const dynamic = 'force-dynamic'
 
 interface PageProps {
@@ -32,36 +31,29 @@ export default async function ClientDetailsPage({ params }: PageProps) {
   const { id } = await params
   const supabase = await createClient()
 
-  // 1. Verificar autenticación
+  // 1. Verificación de sesión
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // 2. Consultar datos del cliente
-  const { data: client, error: clientError } = await supabase
+  // 2. Traer datos del cliente y sus préstamos con pagos
+  // Usamos la relación que ya sabemos que funciona: remaining_balance
+  const { data: client, error } = await supabase
     .from('clients')
-    .select('*')
+    .select(`
+      *,
+      loans (
+        *,
+        payments (*)
+      )
+    `)
     .eq('id', id)
     .single()
 
-  if (clientError || !client) {
-    console.error("Error al obtener cliente:", clientError)
+  if (error || !client) {
     notFound()
   }
 
-  // 3. Consultar préstamos (Ajustado a los nombres de tu imagen image_751a20.jpg)
-  const { data: loans, error: loansError } = await supabase
-    .from('loans')
-    .select(`
-      *,
-      payments (*)
-    `)
-    .eq('client_id', id)
-    .order('created_at', { ascending: false })
-
-  if (loansError) console.error("Error en loans:", loansError)
-
-  // Helpers de formato
-  const formatCurrency = (val: number) => 
+  const formatCOP = (val: number) => 
     new Intl.NumberFormat('es-CO', { 
       style: 'currency', 
       currency: 'COP', 
@@ -70,14 +62,12 @@ export default async function ClientDetailsPage({ params }: PageProps) {
 
   const formatDate = (date: string) => {
     if (!date) return '---'
-    return new Date(date).toLocaleDateString('es-CO', {
-      day: 'numeric', month: 'short', year: 'numeric'
-    })
+    return new Date(date).toLocaleDateString('es-CO')
   }
 
-  // CÁLCULO CRÍTICO: Usamos 'remaining_balanc' (sin la e final) como está en tu DB
-  const totalActiveDebt = loans?.reduce((acc: number, loan: any) => {
-    return loan.status === 'active' ? acc + (Number(loan.remaining_balanc) || 0) : acc
+  // Calculamos la deuda total sumando 'remaining_balance'
+  const totalActiveDebt = client.loans?.reduce((acc: number, loan: any) => {
+    return loan.status === 'active' ? acc + (Number(loan.remaining_balance) || 0) : acc
   }, 0) || 0
 
   return (
@@ -95,23 +85,21 @@ export default async function ClientDetailsPage({ params }: PageProps) {
             <User className="h-8 w-8" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 uppercase">
-              {client.full_name || 'Sin Nombre'}
-            </h1>
-            <p className="text-xs font-mono text-muted-foreground uppercase">ID: {client.id.slice(0, 8)}</p>
+            <h1 className="text-2xl font-bold text-slate-900 uppercase">{client.full_name}</h1>
+            <p className="text-xs font-mono text-muted-foreground">ID: {client.id.slice(0,8)}</p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase">Saldo Pendiente</p>
-          <p className="text-3xl font-black text-red-600">{formatCurrency(totalActiveDebt)}</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase">Saldo Pendiente Total</p>
+          <p className="text-3xl font-black text-red-600">{formatCOP(totalActiveDebt)}</p>
         </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Información de Contacto */}
+        {/* Contacto */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Contacto</CardTitle>
+            <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Información de Contacto</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
@@ -120,49 +108,44 @@ export default async function ClientDetailsPage({ params }: PageProps) {
             </div>
             <div className="flex items-center gap-3">
               <MapPin className="h-4 w-4 text-red-500" />
-              <span className="text-sm uppercase font-medium">{client.address || 'Sin dirección'}</span>
+              <span className="text-sm uppercase">{client.address || 'Sin dirección'}</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Listado de Préstamos */}
+        {/* Historial de Préstamos */}
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
-              <CreditCard className="h-4 w-4" /> Préstamos Activos e Historial
+              <CreditCard className="h-4 w-4" /> Préstamos Realizados
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-[10px] uppercase">Monto Total</TableHead>
-                  <TableHead className="text-[10px] uppercase">Saldo Actual</TableHead>
+                  <TableHead className="text-[10px] uppercase">Monto</TableHead>
+                  <TableHead className="text-[10px] uppercase">Saldo</TableHead>
                   <TableHead className="text-[10px] uppercase">Estado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loans && loans.length > 0 ? (
-                  loans.map((loan: any) => (
+                {client.loans && client.loans.length > 0 ? (
+                  client.loans.map((loan: any) => (
                     <TableRow key={loan.id}>
-                      <TableCell className="font-medium text-sm">
-                        {formatCurrency(loan.total_amount)}
-                      </TableCell>
-                      <TableCell className="font-bold text-red-600 text-sm">
-                        {/* Importante: 'remaining_balanc' coincide con tu imagen */}
-                        {formatCurrency(loan.remaining_balanc)}
-                      </TableCell>
+                      <TableCell className="text-sm font-medium">{formatCOP(loan.principal_amount)}</TableCell>
+                      <TableCell className="text-sm font-bold text-red-600">{formatCOP(loan.remaining_balance)}</TableCell>
                       <TableCell>
-                        <Badge variant={loan.status === 'active' ? 'default' : 'secondary'} className="text-[10px] uppercase">
-                          {loan.status}
+                        <Badge variant={loan.status === 'active' ? 'default' : 'secondary'} className="text-[10px] uppercase font-bold">
+                          {loan.status === 'active' ? 'Vigente' : 'Pagado'}
                         </Badge>
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center py-6 text-slate-400 text-xs italic">
-                      No hay préstamos registrados para este cliente.
+                    <TableCell colSpan={3} className="text-center py-6 text-xs text-muted-foreground italic">
+                      No hay préstamos para este cliente.
                     </TableCell>
                   </TableRow>
                 )}
@@ -172,11 +155,11 @@ export default async function ClientDetailsPage({ params }: PageProps) {
         </Card>
       </div>
 
-      {/* Historial de Pagos (Abonos) */}
+      {/* Registro de Abonos */}
       <Card>
         <CardHeader className="bg-slate-50/50 border-b">
           <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
-            <History className="h-4 w-4" /> Registro de Cobros / Abonos
+            <History className="h-4 w-4" /> Historial de Abonos Recibidos
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -184,26 +167,24 @@ export default async function ClientDetailsPage({ params }: PageProps) {
             <TableHeader>
               <TableRow>
                 <TableHead className="text-[10px] uppercase">Fecha</TableHead>
-                <TableHead className="text-[10px] uppercase">Monto Abona</TableHead>
-                <TableHead className="text-[10px] uppercase">Notas</TableHead>
+                <TableHead className="text-[10px] uppercase">Monto</TableHead>
+                <TableHead className="text-[10px] uppercase">Nota</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loans?.flatMap((l: any) => l.payments || []).length === 0 ? (
+              {client.loans?.flatMap((l: any) => l.payments || []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center py-8 text-muted-foreground text-sm italic">
-                    No se han registrado abonos aún.
+                  <TableCell colSpan={3} className="text-center py-8 text-sm text-muted-foreground italic">
+                    Aún no se han registrado abonos.
                   </TableCell>
                 </TableRow>
               ) : (
-                loans?.flatMap((l: any) => l.payments || [])
+                client.loans?.flatMap((l: any) => l.payments || [])
                   .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                   .map((p: any) => (
                     <TableRow key={p.id}>
                       <TableCell className="text-xs">{formatDate(p.created_at)}</TableCell>
-                      <TableCell className="font-bold text-emerald-600 text-sm">
-                        {formatCurrency(p.amount)}
-                      </TableCell>
+                      <TableCell className="font-bold text-emerald-600 text-sm">{formatCOP(p.amount)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{p.notes || '---'}</TableCell>
                     </TableRow>
                   ))
