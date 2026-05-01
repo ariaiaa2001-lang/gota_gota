@@ -1,9 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Phone, MapPin, CreditCard, History, ArrowLeft, Pencil, PlusCircle, Trash2 } from 'lucide-react'
+import { Phone, MapPin, CreditCard, History, ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
@@ -19,7 +18,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 
-import { updateClient, createPayment, updatePayment, deletePayment } from '@/lib/actions/client-actions'
+// 1. IMPORTANTE: Importamos tu nuevo componente de cliente
+import { PaymentForm } from '@/components/PaymentForm'
+
+import { updateClient, updatePayment, deletePayment } from '@/lib/actions/client-actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,7 +108,6 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
           </div>
         </div>
         
-        {/* BANNER DEUDA */}
         <div className="bg-white px-8 py-5 rounded-xl border border-emerald-100 text-right shadow-sm border-l-4 border-l-emerald-500">
           <p className="text-[10px] uppercase text-slate-400 font-bold mb-1 tracking-widest">Deuda Total Pendiente</p>
           <p className="text-4xl font-black text-emerald-600 tabular-nums">{formatCurrency(totalActiveDebt)}</p>
@@ -156,31 +157,8 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
                     </span>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button size="sm" variant="outline" className="border-indigo-200 text-indigo-600 font-bold text-[10px] h-8 px-4 hover:bg-indigo-600 hover:text-white rounded-lg transition-all shadow-sm">
-                          + ABONAR
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader><DialogTitle>Registrar Nuevo Pago</DialogTitle></DialogHeader>
-                        <form action={async (formData) => { "use server"; await createPayment(loan.id, client.id, formData); }} className="space-y-4 pt-4">
-                          <div className="space-y-1">
-                            <Label className="text-[10px] uppercase font-bold text-slate-400">Valor Recibido</Label>
-                            <Input name="amount" type="number" required className="text-3xl font-black h-16 border-2 border-slate-100 focus:border-emerald-500 transition-all" placeholder="$ 0" />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] uppercase font-bold text-slate-400">Fecha de Pago</Label>
-                            <Input name="date" type="datetime-local" defaultValue={new Date().toISOString().slice(0, 16)} required />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] uppercase font-bold text-slate-400">Observaciones</Label>
-                            <Textarea name="notes" placeholder="Detalles del abono..." />
-                          </div>
-                          <Button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 h-12 font-bold text-lg">GUARDAR ABONO</Button>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
+                    {/* 2. AQUÍ USAMOS TU COMPONENTE PaymentForm */}
+                    <PaymentForm loanId={loan.id} clientId={client.id} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -189,7 +167,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
-      {/* SECCIÓN INFERIOR: HISTORIAL DE ABONOS (COLORES MEJORADOS) */}
+      {/* SECCIÓN INFERIOR: HISTORIAL DE ABONOS */}
       <Card className="border-slate-200 shadow-sm border-2 overflow-hidden">
         <CardHeader className="bg-white border-b border-slate-100">
           <CardTitle className="text-[10px] uppercase text-slate-500 flex items-center gap-2 font-black tracking-widest">
@@ -219,7 +197,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    {/* EDITAR (AZUL VISIBLE) */}
+                    {/* EDITAR */}
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button 
@@ -250,7 +228,7 @@ export default async function ClientDetailsPage({ params }: { params: Promise<{ 
                       </DialogContent>
                     </Dialog>
 
-                    {/* ELIMINAR (ROJO VISIBLE) */}
+                    {/* ELIMINAR */}
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button 
