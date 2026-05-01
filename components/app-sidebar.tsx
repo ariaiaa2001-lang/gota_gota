@@ -1,7 +1,8 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   Sidebar,
   SidebarContent,
@@ -13,6 +14,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar, // Hook para controlar el estado
 } from '@/components/ui/sidebar'
 import {
   DropdownMenu,
@@ -34,7 +36,6 @@ import {
   ChevronUp,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
 
 const navItems = [
@@ -77,11 +78,20 @@ interface AppSidebarProps {
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  
+  // Extraemos la función para cerrar el menú en móviles
+  const { setOpenMobile } = useSidebar()
+
+  // EFECTO: Cerrar el menú automáticamente al cambiar de ruta
+  useEffect(() => {
+    setOpenMobile(false)
+  }, [pathname, setOpenMobile])
 
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/auth/login')
+    setOpenMobile(false) // También cerramos al salir
   }
 
   const userInitials = user?.email
@@ -91,9 +101,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border">
-        <Link href="/dashboard" className="flex items-center gap-3 px-2 py-1">
+        <Link 
+          href="/dashboard" 
+          className="flex items-center gap-3 px-2 py-1"
+          onClick={() => setOpenMobile(false)}
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <Droplets className="h-4 w-4" />
+            <div className="bg-emerald-500 p-1.5 rounded-md">
+               <Droplets className="h-4 w-4 text-white" />
+            </div>
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-semibold">Gota a Gota</span>
@@ -101,6 +117,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </div>
         </Link>
       </SidebarHeader>
+
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
@@ -116,6 +133,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
                         : pathname.startsWith(item.href)
                     }
                     tooltip={item.title}
+                    // REFUERZO: Cerramos al hacer click
+                    onClick={() => setOpenMobile(false)}
                   >
                     <Link href={item.href}>
                       <item.icon className="h-4 w-4" />
@@ -128,6 +147,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -160,7 +180,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 sideOffset={4}
               >
                 <DropdownMenuItem asChild>
-                  <Link href="/dashboard/settings" className="cursor-pointer">
+                  <Link 
+                    href="/dashboard/settings" 
+                    className="cursor-pointer"
+                    onClick={() => setOpenMobile(false)}
+                  >
                     <Settings className="mr-2 h-4 w-4" />
                     Configuracion
                   </Link>
